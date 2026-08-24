@@ -5,6 +5,6 @@
   "author": { "name": "AgentDuet" },
   "homepage": "https://github.com/AgentDuet/guru-contributor-skill",
   "repository": "https://github.com/AgentDuet/guru-contributor-skill",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "keywords": ["knowledge-base", "mcp", "contributor", "atomization", "guru", "libra"]
 }

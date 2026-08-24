@@ -60,3 +60,8 @@ writes to `LIBRA_CONTRIB_KEY`. Full flow: `skills/guru-contributor/SKILL.md`.
 The `/library` path prefix tells the public gateway which service to forward
 to — required on every call. Every request also carries the `x-user-org-uuid`
 header for environment routing.
+
+---
+
+© AgentDuet. All rights reserved. Published for distribution and installation;
+no license to copy, modify, or redistribute is granted.
