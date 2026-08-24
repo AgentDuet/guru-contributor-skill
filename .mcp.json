@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "libra": {
+      "type": "http",
+      "url": "https://api.b3networks.com/library/private/v1/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
+        "x-user-org-uuid": "${LIBRA_ORG_UUID}"
+      }
+    }
+  }
+}

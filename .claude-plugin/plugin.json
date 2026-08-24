@@ -1,0 +1,10 @@
+{
+  "name": "guru-contributor",
+  "description": "Contribute knowledge to the Guru KB: atomize documents into atomic records in a local worktree, review as a batch, and push through the libra MCP tools.",
+  "version": "1.1.0",
+  "author": { "name": "AgentDuet" },
+  "homepage": "https://github.com/AgentDuet/guru-contributor-skill",
+  "repository": "https://github.com/AgentDuet/guru-contributor-skill",
+  "license": "MIT",
+  "keywords": ["knowledge-base", "mcp", "contributor", "atomization", "guru", "libra"]
+}

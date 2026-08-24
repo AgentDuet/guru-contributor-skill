@@ -1,0 +1,17 @@
+{
+  "name": "agentduet",
+  "owner": { "name": "AgentDuet" },
+  "metadata": {
+    "description": "AgentDuet skills — knowledge-base contribution tooling.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "guru-contributor",
+      "source": "./",
+      "description": "Contribute knowledge to the Guru KB through the libra MCP write surface.",
+      "version": "1.1.0",
+      "strict": true
+    }
+  ]
+}
