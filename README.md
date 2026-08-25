@@ -29,28 +29,35 @@ Copy `skills/guru-contributor/` into your agent's skills directory
 `.agents/skills/` for Antigravity) and register the MCP server from
 `.mcp.json` yourself.
 
-## Two things you set once (never bundled — they're per-user)
+## Get connected
 
-The plugin ships the MCP registration with **environment-variable references**,
-so no secret and no org id are baked into this repo. Set both in your shell
-profile or secret manager:
+After installing, start a session and run **connect**. It asks you for three
+things, once:
 
-- `LIBRA_CONTRIB_KEY` — your 7-day bearer token, minted by the connect
-  ceremony (email one-time code). The skill's **connect** workflow runs this
-  for you; you never type or paste the token.
-- `LIBRA_ORG_UUID` — your organization's UUID. Sent as the `x-user-org-uuid`
-  header so the gateway routes to the correct environment; it must match the
-  org your bearer was issued for.
+1. your work email
+2. your org's portal domain (e.g. `portal.hoiio.net`)
+3. your org UUID
 
-The bundled `.mcp.json` references them as `${LIBRA_CONTRIB_KEY}` and
-`${LIBRA_ORG_UUID}` — resolved by your agent at call time, never stored here.
+connect emails you a 6-digit code (5-minute, single-use), exchanges it for a
+7-day access token, and wires up the MCP server for you. That's it — you don't
+type, paste, or manage any token, and you don't set any environment variables
+by hand. When the token expires, run **connect** again.
 
-## Getting a credential
+<details>
+<summary>Under the hood (only matters if you register the server manually)</summary>
 
-Start a session with the skill installed and run **connect** — it asks for your
-work email, your org's portal domain, and your org UUID, sends a 6-digit code
-to your inbox (5-minute, single-use), and exchanges it for the bearer, which it
-writes to `LIBRA_CONTRIB_KEY`. Full flow: `skills/guru-contributor/SKILL.md`.
+The bundled `.mcp.json` carries no secret and no org id — it references two
+per-user environment variables that **connect** sets for you:
+
+- `LIBRA_CONTRIB_KEY` — your access token (the credential). connect mints and
+  stores it; it is never printed or committed.
+- `LIBRA_ORG_UUID` — your org UUID, sent as the `x-user-org-uuid` routing
+  header. Not a secret, but must match the org your token was issued for.
+
+If you skip the plugin and copy the skill by hand, set both yourself (shell
+profile or secret manager) before the first tool call. Full flow:
+`skills/guru-contributor/SKILL.md`.
+</details>
 
 ## Endpoint
 

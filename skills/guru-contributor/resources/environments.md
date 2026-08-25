@@ -18,4 +18,6 @@ config. The credential is: it exists only as the `LIBRA_CONTRIB_KEY`
 environment variable on the contributor's own machine (set in their shell
 profile or a secret manager), referenced from MCP config as
 `${LIBRA_CONTRIB_KEY}`, and resolved by the agent at connect time — it is
-never typed, pasted, or echoed anywhere else.
+never typed, pasted, or echoed anywhere else. The routing header reads a
+second variable, `LIBRA_ORG_UUID` (the contributor's org UUID — not a secret);
+**connect** sets both, so the contributor manages neither by hand.

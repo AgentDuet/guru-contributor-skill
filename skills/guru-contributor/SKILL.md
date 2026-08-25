@@ -110,7 +110,7 @@ environments.
            "url": "<env-url>",
            "headers": {
              "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
-             "x-user-org-uuid": "<org_uuid>"
+             "x-user-org-uuid": "${LIBRA_ORG_UUID}"
            }
          }
        }
@@ -119,25 +119,39 @@ environments.
      The `libra` entry nests under the file's top-level `mcpServers` object —
      merge into an existing `mcpServers` if the file already has one; create
      the wrapper if the file is new. Never write `libra` at the top level.
-     `x-user-org-uuid` is REQUIRED: the public gateway routes to the correct
-     environment by it. Use the contributor's own org_uuid (the same org the
-     bearer was issued for — see step 4); if the two disagree, the gateway
-     sends the request to one environment while the token belongs to another
-     and it fails auth. Ask for the org_uuid if you don't already have it.
+     Both headers are **environment-variable references**, resolved by the
+     agent at call time — the config file itself carries no secret and no
+     literal org id. `x-user-org-uuid` is REQUIRED: the public gateway routes
+     to the correct environment by it, and it must resolve to the same org the
+     bearer was issued for — if they disagree, the gateway sends the request
+     to one environment while the token belongs to another and it fails auth.
+     Step 4 sets both `LIBRA_CONTRIB_KEY` and `LIBRA_ORG_UUID`, so run it (or
+     confirm both are already set) before the first tool call.
    - Antigravity: run `agy mcp add -H "Authorization: Bearer
-     $LIBRA_CONTRIB_KEY" -H "x-user-org-uuid: <org_uuid>" libra <env-url>` in
-     the contributor's shell (the shell expands the variable; agy stores the
-     registration globally in `~/.gemini/config/mcp_config.json`). Tell the
-     contributor the header lands in that file as a literal — home-directory
-     trust, never commit it. Same `x-user-org-uuid` rule as above.
+     $LIBRA_CONTRIB_KEY" -H "x-user-org-uuid: $LIBRA_ORG_UUID" libra <env-url>`
+     in the contributor's shell (the shell expands both variables at add-time;
+     agy stores the registration globally in
+     `~/.gemini/config/mcp_config.json`). Tell the contributor both headers
+     land in that file as literals — home-directory trust, never commit it.
+     Both env vars must be set (step 4) before you run this.
    - Any other Agent-Skills-standard agent: its own MCP config file, same
      entry shape — at the path the install README names for that agent, or,
      if the README names none, the agent's own MCP settings (ask the
      contributor to locate them; never invent a path).
    The permission prompt your own tool triggers on this write IS the consent
    gate — `connect` never registers silently.
-4. If `LIBRA_CONTRIB_KEY` is unset in the contributor's environment, run the
-   connect ceremony to self-issue one:
+4. Ensure BOTH env vars the config references are set — the contributor never
+   sets either by hand; connect owns them:
+   - `LIBRA_ORG_UUID` — the contributor's org UUID. Not a secret, but stored
+     the same way as the key so the agent can expand it. If it's unset, you'll
+     collect it in the ceremony below (or just ask for it) and write it.
+   - `LIBRA_CONTRIB_KEY` — the bearer. If unset, run the ceremony to mint one.
+
+   If `LIBRA_CONTRIB_KEY` is already set (e.g. hand-issued key, or a prior
+   connect) skip the ceremony, but still confirm `LIBRA_ORG_UUID` is set —
+   ask for the org UUID and write it if it's missing.
+
+   Ceremony to self-issue the bearer:
    1. Ask the contributor for THREE things together, in the same ask — the
       request call needs all three:
       - their work email
@@ -199,15 +213,19 @@ environments.
       - a bearer token — this is the one moment the credential is in your
         context. Write it straight into the contributor's env var / secret
         manager as `LIBRA_CONTRIB_KEY` (their choice of mechanism, same as
-        below) and never print, log, or repeat it back in chat.
+        below) and never print, log, or repeat it back in chat. Also write
+        `LIBRA_ORG_UUID` = the org_uuid from step 4.1 to the same place, if it
+        isn't already set — the config's `x-user-org-uuid` header resolves it.
       - `otp_invalid` — wrong code. Ask the contributor to retype it
         carefully (typos, transposed digits) and retry the exchange with the
         same code before it expires. Five wrong attempts burn the OTP outright
         — if that happens, go back to step 2 and request a fresh one.
-   4. Confirm the token is written wherever `LIBRA_CONTRIB_KEY` is expected to
-      live for this shell/agent (profile, secret manager, or the equivalent
-      convention for a non-Claude-Code agent) — same rule as the manual path
-      below: never ask for the value back, never echo it.
+   4. Confirm BOTH `LIBRA_CONTRIB_KEY` and `LIBRA_ORG_UUID` are written
+      wherever they're expected to live for this shell/agent (profile, secret
+      manager, or the equivalent convention for a non-Claude-Code agent) —
+      same rule as the manual path below: never ask for the key value back,
+      never echo it. (`LIBRA_ORG_UUID` isn't secret, but both must resolve for
+      the config to work.)
 
    If a contributor already has a hand-issued key from an admin (break-glass
    / dev convenience), the manual path still works: tell them to set
