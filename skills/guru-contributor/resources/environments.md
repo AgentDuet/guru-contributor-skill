@@ -2,12 +2,12 @@
 
 | env | MCP endpoint URL |
 |---|---|
-| prod | `https://api.b3networks.com/library/private/v1/mcp` |
+| prod | `https://api-eks.b3networks.com/library/private/v1/mcp` |
 
 `prod` is the public gateway. The `/library` path prefix tells the gateway
 which service to forward to — it is required on every call. The
 credential-issuance calls live on the same host, same prefix —
-`https://api.b3networks.com/library/public/v1/auth/request` and `.../exchange`.
+`https://api-eks.b3networks.com/library/public/v1/auth/request` and `.../exchange`.
 Every request (issuance and MCP alike) must carry the `x-user-org-uuid` header
 so the gateway routes to the correct environment. If the contributor's
 environment isn't in this table, **connect** asks for the URL directly — never
