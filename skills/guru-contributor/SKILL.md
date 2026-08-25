@@ -43,18 +43,56 @@ Follow these four rules on every task in this skill:
 3. **The MCP surface is the only door.** Nothing you do in the worktree reaches the
    server except an explicit push through the libra MCP tools. Do not try to sync,
    mirror, or publish the worktree any other way.
-4. **Every destructive state is one revert away.** Because you commit locally at
-   each checkpoint, a bad regeneration, a bad review edit, or a structural
-   experiment is always recoverable with `git revert` or `git reset` — no server
-   involvement needed. Commit often so this stays true.
+4. **Every destructive state is one revert away — when git is available.** With
+   git, you commit locally at each checkpoint, so a bad regeneration, review
+   edit, or structural experiment is always recoverable with `git revert` or
+   `git reset` — no server involvement needed; commit often so this stays true.
+   Without git (see the Git section), there is no local undo — make a `.bak`
+   copy before any risky rewrite and tell the contributor the safety net is
+   reduced.
 
 ## The worktree
 
-Your worktree is a plain git repository where each directory is a collection and
-each file is a record; identity and provenance live in front-matter and collection
+Your worktree is a directory where each directory is a collection and each file
+is a record; identity and provenance live in front-matter and collection
 markers, not in filenames or any external store. Read `resources/record-format.md`
 before you create or edit any record or collection marker — it defines the exact
-file shape the server expects.
+file shape the server expects. When `git` is available (see below) the worktree
+is also a local git repo, which adds checkpoints and undo — but git is not
+required to contribute.
+
+## Git — recommended, not required
+
+Git powers the worktree's **local safety net**: checkpoint commits and undo
+(`git revert`/`git reset`). It is **not** required to contribute — the core path
+(author files → push via MCP) works without it. On the FIRST session (and in
+`init`), run `git --version` and handle three cases:
+
+1. **git present** → full mode: the worktree is a git repo, you commit at each
+   checkpoint, and any bad state is one revert away. Proceed normally.
+2. **git missing** → tell the contributor plainly, then:
+   - **Recommend they install it themselves** — the best option: one-time,
+     machine-wide, no admin questions for you to handle.
+   - **Offer to install it for them, ONLY if they say yes.** Installing system
+     software changes their machine and may need admin — never do it silently.
+     On an explicit yes, detect OS + package manager and run the exact command;
+     never assume `sudo` without telling them:
+     - macOS: `brew install git` (or `xcode-select --install`)
+     - Debian/Ubuntu: `sudo apt-get install -y git`
+     - Fedora/RHEL: `sudo dnf install -y git`
+     - Windows: `winget install --id Git.Git` (or `choco install git` /
+       `scoop install git`)
+   - **If they decline both → no-git mode.** State the trade-off (below) and
+     continue — never dead-end on a missing git.
+3. **no-git mode trade-off** (say it, don't bury it):
+   - **Lost:** local checkpoints and local undo — a bad regeneration or review
+     edit **can't be rolled back** with git.
+   - **Still works:** authoring, review, **push via MCP**, reading records back
+     (identity/provenance live in the files), and the **server keeps its own
+     history** of what you push.
+   - **Safety substitute:** before any risky local rewrite or regeneration,
+     copy the file to `<name>.bak` first so you can restore it by hand.
+   - Suggest installing git later for the full safety net.
 
 ## Session start
 
@@ -315,10 +353,14 @@ expired and offer to re-run the ceremony (a fresh email round trip, ~30
 seconds) to mint a new one; the new token overwrites the expired entry in the
 token store under that org, and re-registers per the mode they're using.
 
-**init** — Create the worktree directory, `git init` it, and write
-`README-worktree.md`: a short notice that this repo has no remote (see Vocabulary
-above — push happens through the MCP tools, not `git push`). First commit:
-`"init worktree"`.
+**init** — Create the worktree directory and write `README-worktree.md`: a short
+notice that this repo has no remote (see Vocabulary above — push happens through
+the MCP tools, not `git push`). Then check git (see the **Git** section):
+- **git present:** `git init` the directory and make the first commit
+  `"init worktree"`; commit at each checkpoint from here on.
+- **git missing:** run the Git-section flow (recommend self-install → offer to
+  install on consent → else no-git mode). In no-git mode, skip `git init`/commit
+  entirely — it's a plain folder; use `.bak` copies before risky rewrites.
 
 **ingest <documents>** — The core authoring workflow:
 
