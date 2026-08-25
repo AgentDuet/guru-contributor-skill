@@ -140,11 +140,16 @@ environments.
    - Otherwise run the **ceremony** (below) to mint one, then save it to the
      store under that org_uuid (`chmod 600`). Never store a token anywhere else
      in plaintext, never echo it.
-4. Register the server for the contributor's agent, using the token from step 3.
-   State exactly what you're about to write first — the permission prompt on the
-   write IS the consent gate; connect never registers silently.
+4. Register the server for the host you're running in, using the token from
+   step 3. **First determine the host** — Claude Code CLI, Antigravity (agy,
+   CLI or desktop), Claude Cowork (the Claude desktop app), or another
+   Agent-Skills agent — and pick the matching target below; if you can't tell,
+   ask the contributor. State exactly what you're about to write first — the
+   permission prompt on the write IS the consent gate; connect never registers
+   silently. Each target ends with a reload the contributor must perform (see
+   step 5) — the config never hot-loads.
 
-   **Claude Code — two modes; ask which, default global:**
+   **Claude Code (CLI) — two modes; ask which, default global:**
    - *Global* (the comfortable default for a one-org contributor): a
      **user-scoped** `.mcp.json` with env-var references, plus the two env vars
      set from the store:
@@ -170,17 +175,36 @@ environments.
 
    In both modes the `libra` entry nests under the top-level `mcpServers` —
    merge into an existing one; never write `libra` at the top level.
+   *Per-folder is a Claude Code CLI-only capability* — the other three hosts
+   have a single global config (see below).
 
-   **Antigravity (agy) — switch-active-org (agy has NO per-folder config):**
-   agy keeps ONE global registration and bakes header values as literals (no
-   runtime env expansion), so exactly one org is active per machine — you
-   *switch* it, you don't scope it per folder. Run:
+   **Antigravity (agy) — CLI AND desktop 2.x, one command — switch-active-org:**
+   agy keeps ONE global registration at `~/.gemini/config/mcp_config.json`
+   which **both the CLI and the 2.x desktop app read**, and bakes header values
+   as literals (no runtime env expansion) — so exactly one org is active per
+   machine; you *switch* it, you don't scope it per folder. Run:
    `agy mcp add -H "Authorization: Bearer <token literal>" -H
    "x-user-org-uuid: <org_uuid literal>" libra <env-url>` (both literals from
    the store), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
-   token and agy leaves it world-readable). Tell the contributor agy is now
-   globally pointed at THIS org until switched again — to work in another org,
-   run connect again and switch; two orgs are never active on agy at once.
+   token and agy leaves it world-readable). One command covers CLI + desktop.
+   Tell the contributor agy is now globally pointed at THIS org until switched
+   again — two orgs are never active on agy at once.
+
+   **Claude Cowork (Claude desktop app) — global, one active org:**
+   Cowork reads `claude_desktop_config.json` (macOS:
+   `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows:
+   `%APPDATA%\Claude\claude_desktop_config.json`). It expects **literal**
+   header values. Merge this into its top-level `mcpServers` (never overwrite an
+   existing `mcpServers` — read, merge the `libra` key, write back):
+   ```json
+   { "mcpServers": { "libra": { "url": "<env-url>",
+     "headers": { "Authorization": "Bearer <token literal>",
+                  "x-user-org-uuid": "<org_uuid literal>" } } } }
+   ```
+   One active org per machine (like agy) — to switch org, rewrite this entry.
+   The skill itself installs into Cowork separately from this MCP wiring — the
+   contributor adds it via **Customize → Skills → ➕ → Upload a skill** (a ZIP),
+   or drops it under `.claude/skills/`; connect only writes the MCP config.
 
    **Any other Agent-Skills-standard agent:** its own MCP config file, same
    entry shape (inline literals from the store), at the path its install README
@@ -274,10 +298,14 @@ way in — save that straight to the store under its org and skip the ceremony):
    org (ask them for the value privately — never in chat, never echoed), then
    register as usual. Either path ends the same way: the token lives only in
    the store (and, in global mode, the env var), and never transits chat.
-5. Finish by telling the contributor: newly registered MCP servers don't
-   hot-load, so restart the session, then call `whoami` to verify — the org
-   name/limits echoing back means you're connected. Then run the **session-start
-   org confirmation** before any write.
+5. Finish by telling the contributor to reload — newly registered MCP servers
+   never hot-load. The reload depends on the host:
+   - **Claude Code CLI / agy CLI:** start a new session.
+   - **agy desktop / Claude Cowork (desktop apps):** fully quit and reopen the
+     app (a new chat/tab is not enough — the whole app must restart to re-read
+     the config).
+   Then call `whoami` to verify — the org name/limits echoing back means you're
+   connected. Then run the **session-start org confirmation** before any write.
 
 **Reconnecting after expiry:** any tool call that comes back as an auth
 failure (a bare 401, or a tool result carrying an auth-shaped error) after a

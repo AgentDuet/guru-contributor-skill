@@ -7,22 +7,31 @@ language, it takes care of the rest.
 
 ## Install
 
-### Claude Code
+Works on four hosts. Install once, then run **connect** (below) — it wires up
+the right config for whichever host you're on.
+
+### Claude Code (CLI)
 ```
 /plugin marketplace add AgentDuet/guru-contributor-skill
 /plugin install guru-contributor@agentduet
 ```
 
-### Antigravity (agy)
+### Antigravity (agy) — CLI or 2.x desktop
 ```
 agy plugin install guru-contributor@agentduet
 ```
-(or `agy plugin import` from a Claude marketplace already added.)
+(or `agy plugin import` from a Claude marketplace already added, or copy
+`skills/guru-contributor/` into `.agents/skills/`). One install serves both the
+`agy` CLI and the Antigravity desktop app — they share the same config.
 
-### Other agents
-Copy `skills/guru-contributor/` into your agent's skills directory
-(`~/.claude/skills/` for Claude Code, `~/.gemini/config/skills/` or a project
-`.agents/skills/` for Antigravity).
+### Claude Cowork (Claude desktop app)
+In the app: **Customize → Skills → ➕ → Upload a skill**, and choose a ZIP of the
+`skills/guru-contributor/` folder. (Or drop it under `.claude/skills/`.) Then run
+**connect** and fully restart the app.
+
+### Other Agent-Skills agents
+Copy `skills/guru-contributor/` into the agent's skills directory; run
+**connect** and let it write that agent's MCP config.
 
 ## Get started
 
