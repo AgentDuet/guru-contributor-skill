@@ -186,6 +186,12 @@ environments.
         three values (email, portal domain, and org_uuid), or contact their
         admin if they're confident all three are right; don't retry
         automatically.
+      - `org_not_enabled` — the org itself hasn't been enabled for
+        contribution yet (this is separate from membership — the org must be
+        opened on the Libra side first). Stop; tell the contributor their
+        organization isn't enabled to contribute yet and to ask their admin to
+        have it provisioned/opened. Don't retry — re-requesting won't change
+        it until the org is opened.
       - `send_failed` — the code was minted but delivery failed (a notification-
         service hiccup). Nothing is pending, so it's safe to just retry step 2
         — tell the contributor delivery failed and you're trying again. If
