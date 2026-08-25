@@ -160,10 +160,13 @@ session start hands you off to when the libra tools aren't reachable, and it's
 also the answer whenever the contributor asks to connect or switch
 environments.
 
-1. Read `resources/environments.md` and present the environment choices there.
-   If the registry is empty (a generic, unpackaged build), if the
-   contributor's environment isn't listed, or if its row is still a
-   placeholder, ask them for the URL directly — never guess one or invent one.
+1. Read `resources/environments.md` and pick the endpoint:
+   - Exactly ONE concrete (non-placeholder) environment listed → **use it, no
+     confirmation** — just tell the contributor which endpoint you're connecting
+     to as you proceed.
+   - Several listed → ask which one.
+   - Empty, all placeholders, or the contributor's environment isn't listed →
+     ask them for the URL directly. Never guess or invent one.
 2. Check for an existing `libra` registration. If one exists, show its current
    URL and offer keep or switch; switch means rewriting that entry with the
    new URL, nothing more.

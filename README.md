@@ -55,6 +55,14 @@ Every session, before it writes anything, the skill shows you which
 organization you're contributing into and asks you to confirm — so a mistaken
 org is caught before anything lands.
 
+## Your documents
+
+Point the skill at your files — Markdown, text, and PDF work as-is. For Office
+files (`.docx`, `.pptx`, `.xlsx`) it reads them using converter tools already on
+your machine if present (`pandoc`, `python3`, `textutil`, …); **you don't need
+to install anything**. If none are available, it simply asks you to **Save As
+PDF** and continues. Nothing to set up.
+
 ---
 
 © AgentDuet. All rights reserved. Published for distribution and installation;
