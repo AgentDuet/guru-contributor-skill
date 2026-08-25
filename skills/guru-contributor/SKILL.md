@@ -61,8 +61,39 @@ file shape the server expects.
 Before doing anything else in a session, call the `whoami` MCP tool. It returns:
 
 ```
-{ org_uuid, identity_uuid, owner_name, limits }
+{ org_name, org_uuid, identity_uuid, owner_name, limits }
 ```
+
+### Org confirmation — MANDATORY, no exception
+
+Contributions are org-scoped and irreversible-ish (they land in a real shared
+knowledge base). A contributor working across several orgs/environments can
+easily have the wrong one active. So **before any contribution action in a
+session — push_records, push_collections, delete_records, or an edit — you MUST
+show the contributor the active org and get an explicit yes/no confirmation.**
+
+Show it plainly, name first (a UUID is not something a human can eyeball):
+
+```
+You are connected to:  <org_name>   (<org_uuid>)
+Contributing as:       <owner_name>
+Proceed with this organization? (yes / no)
+```
+
+Rules, no exceptions:
+- Do this once per session, at the start (or immediately after a **connect** /
+  org switch), and always before the first write.
+- Require an explicit **yes**. Silence, "go ahead with the task", or any
+  instruction that isn't a clear yes to *this* question does NOT count — ask
+  again. Read-only calls (whoami, list_*, get_records) are fine before the
+  confirm; nothing that writes is.
+- On **no**: stop. Do not push anything. Offer **connect** to switch org, or
+  end. Never proceed to a write on an unconfirmed org.
+- If `org_name` equals `org_uuid` (the server couldn't resolve a display name),
+  say so explicitly and still require the yes/no — do not pretend you have a
+  friendly name you don't.
+
+### Limits
 
 Treat `limits` as live server configuration, not a constant — read it fresh each
 session and use its values directly instead of hardcoding numbers. It carries:
@@ -77,7 +108,7 @@ Never hardcode any of these; the server can change them at any time.
 
 If `whoami` is absent or fails outright, the libra MCP tools aren't reachable
 in this session yet — run **connect** (below) before anything else in this
-skill.
+skill. (After connect succeeds, run the org confirmation above before writing.)
 
 ## Workflows
 
@@ -98,60 +129,67 @@ environments.
 2. Check for an existing `libra` registration. If one exists, show its current
    URL and offer keep or switch; switch means rewriting that entry with the
    new URL, nothing more.
-3. State exactly what you're about to write, then write it:
-   - Claude Code: a project-scoped `.mcp.json` entry — ask the contributor
-     project vs. user scope, default to project (worktree-bound work should
-     travel with the repo):
+3. Ensure a live token for the target org, via the local **token store** — so
+   the contributor logs in once *per org*, not once per folder:
+   - The store is `~/.guru/credentials.json` (`chmod 600` — it holds secrets).
+     Shape: a map `org_uuid -> { token, expires_at, org_name, owner_name }`.
+   - Look up the target org. If it has a token whose `expires_at` is still in
+     the future, **reuse it** — no ceremony, no re-login. This is what makes
+     the same org work across folders and lets you switch between already-known
+     orgs login-free.
+   - Otherwise run the **ceremony** (below) to mint one, then save it to the
+     store under that org_uuid (`chmod 600`). Never store a token anywhere else
+     in plaintext, never echo it.
+4. Register the server for the contributor's agent, using the token from step 3.
+   State exactly what you're about to write first — the permission prompt on the
+   write IS the consent gate; connect never registers silently.
+
+   **Claude Code — two modes; ask which, default global:**
+   - *Global* (the comfortable default for a one-org contributor): a
+     **user-scoped** `.mcp.json` with env-var references, plus the two env vars
+     set from the store:
      ```json
-     {
-       "mcpServers": {
-         "libra": {
-           "type": "http",
-           "url": "<env-url>",
-           "headers": {
-             "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
-             "x-user-org-uuid": "${LIBRA_ORG_UUID}"
-           }
-         }
-       }
-     }
+     { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
+       "headers": { "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
+                    "x-user-org-uuid": "${LIBRA_ORG_UUID}" } } } }
      ```
-     The `libra` entry nests under the file's top-level `mcpServers` object —
-     merge into an existing `mcpServers` if the file already has one; create
-     the wrapper if the file is new. Never write `libra` at the top level.
-     Both headers are **environment-variable references**, resolved by the
-     agent at call time — the config file itself carries no secret and no
-     literal org id. `x-user-org-uuid` is REQUIRED: the public gateway routes
-     to the correct environment by it, and it must resolve to the same org the
-     bearer was issued for — if they disagree, the gateway sends the request
-     to one environment while the token belongs to another and it fails auth.
-     Step 4 sets both `LIBRA_CONTRIB_KEY` and `LIBRA_ORG_UUID`, so run it (or
-     confirm both are already set) before the first tool call.
-   - Antigravity: run `agy mcp add -H "Authorization: Bearer
-     $LIBRA_CONTRIB_KEY" -H "x-user-org-uuid: $LIBRA_ORG_UUID" libra <env-url>`
-     in the contributor's shell (the shell expands both variables at add-time;
-     agy stores the registration globally in
-     `~/.gemini/config/mcp_config.json`). Tell the contributor both headers
-     land in that file as literals — home-directory trust, never commit it.
-     Both env vars must be set (step 4) before you run this.
-   - Any other Agent-Skills-standard agent: its own MCP config file, same
-     entry shape — at the path the install README names for that agent, or,
-     if the README names none, the agent's own MCP settings (ask the
-     contributor to locate them; never invent a path).
-   The permission prompt your own tool triggers on this write IS the consent
-   gate — `connect` never registers silently.
-4. Ensure BOTH env vars the config references are set — the contributor never
-   sets either by hand; connect owns them:
-   - `LIBRA_ORG_UUID` — the contributor's org UUID. Not a secret, but stored
-     the same way as the key so the agent can expand it. If it's unset, you'll
-     collect it in the ceremony below (or just ask for it) and write it.
-   - `LIBRA_CONTRIB_KEY` — the bearer. If unset, run the ceremony to mint one.
+     Set `LIBRA_CONTRIB_KEY` (the store's token) and `LIBRA_ORG_UUID` (the org)
+     in the contributor's shell profile / secret manager. One active org per
+     machine; works in every folder.
+   - *Per-folder* (for testing several orgs/envs at once): a **project-scoped**
+     `.mcp.json` in THIS folder with the org and token **inline as literals**
+     from the store, so each folder pins its own org:
+     ```json
+     { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
+       "headers": { "Authorization": "Bearer <token literal>",
+                    "x-user-org-uuid": "<org_uuid literal>" } } } }
+     ```
+     The token is a secret in a project file — **ensure `.mcp.json` is
+     gitignored in that repo before writing it**, and tell the contributor it
+     must never be committed.
 
-   If `LIBRA_CONTRIB_KEY` is already set (e.g. hand-issued key, or a prior
-   connect) skip the ceremony, but still confirm `LIBRA_ORG_UUID` is set —
-   ask for the org UUID and write it if it's missing.
+   In both modes the `libra` entry nests under the top-level `mcpServers` —
+   merge into an existing one; never write `libra` at the top level.
 
-   Ceremony to self-issue the bearer:
+   **Antigravity (agy) — switch-active-org (agy has NO per-folder config):**
+   agy keeps ONE global registration and bakes header values as literals (no
+   runtime env expansion), so exactly one org is active per machine — you
+   *switch* it, you don't scope it per folder. Run:
+   `agy mcp add -H "Authorization: Bearer <token literal>" -H
+   "x-user-org-uuid: <org_uuid literal>" libra <env-url>` (both literals from
+   the store), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
+   token and agy leaves it world-readable). Tell the contributor agy is now
+   globally pointed at THIS org until switched again — to work in another org,
+   run connect again and switch; two orgs are never active on agy at once.
+
+   **Any other Agent-Skills-standard agent:** its own MCP config file, same
+   entry shape (inline literals from the store), at the path its install README
+   names; if none, ask the contributor to locate its MCP settings — never
+   invent a path.
+
+**Ceremony** — mint a fresh bearer. Run by step 3 ONLY when the store has no
+live token for the target org (a hand-issued admin/break-glass key is the other
+way in — save that straight to the store under its org and skip the ceremony):
    1. Ask the contributor for THREE things together, in the same ask — the
       request call needs all three:
       - their work email
@@ -217,38 +255,37 @@ environments.
       `x-user-org-uuid: <org_uuid>` (same routing rule as the request call).
       Its shapes:
       - a bearer token — this is the one moment the credential is in your
-        context. Write it straight into the contributor's env var / secret
-        manager as `LIBRA_CONTRIB_KEY` (their choice of mechanism, same as
-        below) and never print, log, or repeat it back in chat. Also write
-        `LIBRA_ORG_UUID` = the org_uuid from step 4.1 to the same place, if it
-        isn't already set — the config's `x-user-org-uuid` header resolves it.
+        context. Save it to the **token store** (`~/.guru/credentials.json`,
+        `chmod 600`) under this org_uuid, with `expires_at` and, if you have
+        them, `org_name`/`owner_name`. Never print, log, or repeat it back in
+        chat. Then continue to step 4 (register) — global mode also copies it
+        into the `LIBRA_CONTRIB_KEY`/`LIBRA_ORG_UUID` env vars; per-folder and
+        agy modes read the literal straight from the store.
       - `otp_invalid` — wrong code. Ask the contributor to retype it
         carefully (typos, transposed digits) and retry the exchange with the
         same code before it expires. Five wrong attempts burn the OTP outright
         — if that happens, go back to step 2 and request a fresh one.
-   4. Confirm BOTH `LIBRA_CONTRIB_KEY` and `LIBRA_ORG_UUID` are written
-      wherever they're expected to live for this shell/agent (profile, secret
-      manager, or the equivalent convention for a non-Claude-Code agent) —
-      same rule as the manual path below: never ask for the key value back,
-      never echo it. (`LIBRA_ORG_UUID` isn't secret, but both must resolve for
-      the config to work.)
+   4. Confirm the token landed in the store under the right org_uuid, then
+      return to step 4 (register) to wire it into the agent — never ask for the
+      key value back, never echo it.
 
-   If a contributor already has a hand-issued key from an admin (break-glass
-   / dev convenience), the manual path still works: tell them to set
-   `LIBRA_CONTRIB_KEY` themselves — shell profile or secret manager, their
-   choice. Never ask for the value in chat, and never echo it back even if
-   you see it. Either path — ceremony or hand-issued — ends the same way: the
-   env var is set, the bearer itself never transits chat.
+   If a contributor already has a hand-issued key from an admin (break-glass /
+   dev convenience), skip the ceremony: save that key to the store under its
+   org (ask them for the value privately — never in chat, never echoed), then
+   register as usual. Either path ends the same way: the token lives only in
+   the store (and, in global mode, the env var), and never transits chat.
 5. Finish by telling the contributor: newly registered MCP servers don't
-   hot-load, so restart the session, then call `whoami` to verify — org and
-   limits echoing back means you're connected.
+   hot-load, so restart the session, then call `whoami` to verify — the org
+   name/limits echoing back means you're connected. Then run the **session-start
+   org confirmation** before any write.
 
 **Reconnecting after expiry:** any tool call that comes back as an auth
 failure (a bare 401, or a tool result carrying an auth-shaped error) after a
 prior successful connect most likely means the 7-day bearer expired. Don't
 guess or retry blindly — tell the contributor their session credential has
-expired and offer to re-run the ceremony in step 4 above (a fresh email round
-trip, ~30 seconds) to mint a new one.
+expired and offer to re-run the ceremony (a fresh email round trip, ~30
+seconds) to mint a new one; the new token overwrites the expired entry in the
+token store under that org, and re-registers per the mode they're using.
 
 **init** — Create the worktree directory, `git init` it, and write
 `README-worktree.md`: a short notice that this repo has no remote (see Vocabulary

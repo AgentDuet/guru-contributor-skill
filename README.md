@@ -38,6 +38,10 @@ your access later expires, just run **connect** again.
 That's all you do. Connection, credentials, and security are handled for you —
 there's nothing to configure and nothing to keep secret on your side.
 
+Every session, before it writes anything, the skill shows you which
+organization you're contributing into and asks you to confirm — so a mistaken
+org is caught before anything lands.
+
 ---
 
 © AgentDuet. All rights reserved. Published for distribution and installation;
