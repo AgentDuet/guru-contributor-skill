@@ -61,6 +61,31 @@ file shape the server expects. When `git` is available (see below) the worktree
 is also a local git repo, which adds checkpoints and undo — but git is not
 required to contribute.
 
+## Bundled scripts — run these, never compose code inline
+
+This skill ships tested helper scripts in `scripts/`. **Always run the bundled
+script; never hand-compose python via `python3 -c '…'` or paste multi-line code
+into the shell** — inline composition breaks constantly on quoting (nested
+quotes, f-strings, escapes) and wastes turns. The scripts take their inputs from
+**files/stdin, never fragile CLI args**.
+
+- **`scripts/convert.py <file>`** — Office doc (`.docx/.pptx/.xlsx`) → text,
+  stdlib-only, cross-platform. No-python fallbacks: `scripts/convert.sh <file>`
+  (macOS/Linux), `scripts/convert.ps1 <file>` (Windows).
+- **`scripts/creds.py {get|show|set|list} <org_uuid>`** — the token store
+  (`~/.guru/credentials.json`). `get` prints a live token (exit 1 if
+  absent/expired); `set` reads `{token,expires_at,org_name,owner_name}` JSON from
+  **stdin** (never a CLI arg).
+- **`scripts/gen_records.py <spec.json> [worktree]`** — emit record `.md` files
+  + `.collection` markers from a spec you write to a FILE with your file tools
+  (never pass record bodies as shell args). Handles slugs, front-matter order,
+  and collision-safe filenames per `resources/record-format.md`.
+
+**Pick order for any job with a script:** run the `.py` if `python3` exists (it
+covers every OS); else the OS fallback (`.sh` macOS/Linux, `.ps1` Windows); else
+the manual path the workflow names. If a script isn't present (older package),
+fall back to doing the job by hand as the workflows describe.
+
 ## Git — recommended, not required
 
 Git powers the worktree's **local safety net**: checkpoint commits and undo
@@ -172,15 +197,19 @@ environments.
    new URL, nothing more.
 3. Ensure a live token for the target org, via the local **token store** — so
    the contributor logs in once *per org*, not once per folder:
-   - The store is `~/.guru/credentials.json` (`chmod 600` — it holds secrets).
-     Shape: a map `org_uuid -> { token, expires_at, org_name, owner_name }`.
-   - Look up the target org. If it has a token whose `expires_at` is still in
-     the future, **reuse it** — no ceremony, no re-login. This is what makes
-     the same org work across folders and lets you switch between already-known
-     orgs login-free.
-   - Otherwise run the **ceremony** (below) to mint one, then save it to the
-     store under that org_uuid (`chmod 600`). Never store a token anywhere else
-     in plaintext, never echo it.
+   Use the bundled **`scripts/creds.py`** for all store access — never hand-edit
+   the JSON or compose inline python. The store is `~/.guru/credentials.json`
+   (`org_uuid -> { token, expires_at, org_name, owner_name }`, `chmod 600`).
+   - Look up the target org: `python3 scripts/creds.py get <org_uuid>`. Exit 0
+     prints a live token → **reuse it**, no ceremony, no re-login (this is what
+     makes the same org work across folders and lets you switch known orgs
+     login-free). Exit 1 = absent or expired → run the ceremony.
+   - After the ceremony mints a token, save it:
+     `echo '{"token":"…","expires_at":"…","org_name":"…","owner_name":"…"}' |
+     python3 scripts/creds.py set <org_uuid>` (token on **stdin**, never a CLI
+     arg). Never store a token anywhere else in plaintext, never echo it.
+   - (No python? then read/write the JSON with your file tools — merge, don't
+     clobber other orgs — and `chmod 600` it.)
 4. Register the server for the host you're running in, using the token from
    step 3. **First determine the host** — Claude Code CLI, Antigravity (agy,
    CLI or desktop), Claude Cowork (the Claude desktop app), or another
@@ -370,26 +399,33 @@ the MCP tools, not `git push`). Then check git (see the **Git** section):
 1. Read the source document(s). Formats your Read tool handles natively
    (markdown, text, PDF) need nothing. Binary formats (.docx, .pptx, .xlsx)
    you convert YOURSELF — the contributor is never asked to be technical.
-   Try, in order, whatever this machine has:
-   - `pandoc <file> -t markdown`
-   - plain `python3` with the standard library only — a .docx is a zip:
-     read `word/document.xml` via `zipfile` and strip the XML tags to text
-     (no packages to install)
-   - macOS: `textutil -convert txt <file>`
-   - Windows with Word installed: PowerShell COM —
-     `(New-Object -ComObject Word.Application)` open + save as text
-   - LAST resort only, when every rung above is unavailable: ask the
-     contributor to open the file and **File → Save As** PDF or plain text
-     into the docs folder — say exactly that, one step, no jargon.
+   Use the **bundled converter** (see *Bundled scripts* above) — do NOT compose
+   conversion code inline. Pick order:
+   - `python3 scripts/convert.py <file>` — primary, every OS (needs python3)
+   - `sh scripts/convert.sh <file>` — macOS/Linux without python (uses pandoc /
+     textutil / unzip)
+   - `powershell -File scripts/convert.ps1 <file>` — Windows without python
+     (pandoc / Word COM / unzip)
+   - LAST resort only, when python is absent AND the OS fallback can't convert:
+     ask the contributor to open the file and **File → Save As** PDF or plain
+     text into the docs folder — say exactly that, one step, no jargon.
    Extracted text loses layout — that's fine; atomization needs the words,
    not the formatting. Tables that carry real knowledge: transcribe the
    content into prose or a small markdown table in the record body.
 2. Atomize each one per `resources/atomization.md` — one complete thought per
    record, subjects, provenance, what to skip (and why).
 3. Write the draft records and their `.collection` markers into the worktree.
-   Follow `resources/record-format.md` exactly for file shape: a fresh record's
-   front-matter has only `subject` plus `source_type`/`source_ref` (both stamped
-   verbatim from the document) — no `stable_id`, no `owner_uuid` yet. A fresh
+   Prefer the bundled **`scripts/gen_records.py`**: write a spec JSON to a FILE
+   with your file tools (collections + records with `subject`, `body`,
+   `path`, and `source_type`/`source_ref` where document-derived), then
+   `python3 scripts/gen_records.py <spec.json> <worktree>` — it emits valid
+   front-matter (correct field order, safe YAML), slugged collision-free
+   filenames, and `.collection` markers per `resources/record-format.md`. This
+   avoids hand-writing many files and any shell-quoting of record bodies. (No
+   python? write the files directly with your file tools, following
+   `resources/record-format.md` exactly.) Either way, a fresh record's
+   front-matter has only `subject` plus `source_type`/`source_ref` (stamped
+   verbatim from the document) — no `stable_id`, no `owner_uuid` yet; a fresh
    collection's marker has only `name` — no `collection_id` yet.
 4. Commit `"atomized <source_ref>"`. Ingesting several documents in one call
    still gets one commit per document, each tagged with that document's own
