@@ -17,16 +17,20 @@ the right config for whichever host you're on.
 ```
 
 ### Antigravity (agy) — CLI or 2.x desktop
-Clone, then install the plugin (one command; installs globally to
-`~/.gemini/config/plugins/`, shared by the `agy` CLI **and** the Antigravity
-desktop app):
-```
-git clone https://github.com/AgentDuet/guru-contributor-skill.git
-agy plugin install ./guru-contributor-skill
-```
-On the **desktop app**, fully quit + reopen after installing (it loads plugins
-at startup), then run **connect**, then restart once more (MCP config also loads
-at startup). The CLI just needs a new session.
+Download or clone the repo, then either:
+- **Just ask agy to install it** (easiest, no terminal typing): in an agy chat
+  say *"Install the guru-contributor skill from ./guru-contributor-skill"* —
+  agy runs the install for you (approve the permission prompt).
+- **Or run it yourself:**
+  ```
+  git clone https://github.com/AgentDuet/guru-contributor-skill.git
+  agy plugin install ./guru-contributor-skill
+  ```
+Either way it installs globally to `~/.gemini/config/plugins/`, shared by the
+`agy` CLI **and** the Antigravity desktop app. On the **desktop app**, fully
+quit + reopen after installing (it loads plugins at startup), then run
+**connect**, then restart once more (MCP config also loads at startup). The CLI
+just needs a new session.
 
 ### Claude Cowork (Claude desktop app)
 In the app: **Customize → Skills → ➕ → Upload a skill**, and choose a ZIP of the
