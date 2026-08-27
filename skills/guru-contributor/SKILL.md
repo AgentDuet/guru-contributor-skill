@@ -412,9 +412,17 @@ the MCP tools, not `git push`). Then check git (see the **Git** section):
    Extracted text loses layout — that's fine; atomization needs the words,
    not the formatting. Tables that carry real knowledge: transcribe the
    content into prose or a small markdown table in the record body.
-2. Atomize each one per `resources/atomization.md` — one complete thought per
-   record, subjects, provenance, what to skip (and why).
-3. Write the draft records and their `.collection` markers into the worktree.
+2. Atomize per `resources/atomization.md` — one complete thought per
+   record, subjects, provenance, what to skip (and why). With several
+   documents, read them ALL before atomizing any: atomization is one pass
+   over the combined content, never an independent pass per document.
+3. Propose ONE collection tree for the whole batch (atomization.md
+   § Structure): a single unified tree whose boundaries come from the
+   combined content's topics, with overlapping topics from different
+   documents sharing collections. One-root-per-document (or
+   one-collection-per-document) drafts are the failure mode this step
+   exists to prevent.
+4. Write the draft records and their `.collection` markers into the worktree.
    Prefer the bundled **`scripts/gen_records.py`**: write a spec JSON to a FILE
    with your file tools (collections + records with `subject`, `body`,
    `path`, and `source_type`/`source_ref` where document-derived), then
@@ -427,19 +435,29 @@ the MCP tools, not `git push`). Then check git (see the **Git** section):
    front-matter has only `subject` plus `source_type`/`source_ref` (stamped
    verbatim from the document) — no `stable_id`, no `owner_uuid` yet; a fresh
    collection's marker has only `name` — no `collection_id` yet.
-4. Commit `"atomized <source_ref>"`. Ingesting several documents in one call
+5. Commit `"atomized <source_ref>"`. Ingesting several documents in one call
    still gets one commit per document, each tagged with that document's own
    `source_ref`.
-5. Present the tree review (S1): the full map of collections and their record
-   counts, every record's suggested subject, and what you skipped and why. Hand
-   off to **review** (below) for the contributor's edits and confirmation —
-   nothing here has touched the server yet.
+6. Present the tree review (S1) and STOP. Show the proposed COLLECTION tree —
+   the logical tree, rendered as nested collections with each record's
+   suggested subject under its collection, plus per-collection counts and
+   what you skipped and why. Never present it as a worktree directory/file
+   listing (paths, filenames, `.collection` markers are worktree mechanics,
+   not the proposal). Then pause and ask the contributor to review: do they
+   want changes, or continue? They are NOT required to answer yes/no on the
+   spot — they may edit, ask questions, or come back to it. Do not proceed
+   toward push until they explicitly say continue. Hand off to **review**
+   (below) for their edits and confirmation — nothing here has touched the
+   server yet.
 
-**review** — Show the collection/subject/count map plus `git diff` against the
-last checkpoint, so the contributor sees exactly what changed since then. The
-contributor edits files and markers directly in the worktree (front-matter,
-body, `.collection` names) — you don't collect edits through a form. On their
-one confirmation for the batch, commit `"reviewed <scope>"`. This is also the
+**review** — Show the proposed collection tree (same logical-tree rendering as
+ingest step 6 — nested collections with record subjects and counts, never a
+worktree path listing) plus `git diff` against the last checkpoint, so the
+contributor sees exactly what changed since then. Then wait: the contributor
+edits files and markers directly in the worktree (front-matter, body,
+`.collection` names) — you don't collect edits through a form, and you never
+treat showing the tree as having asked for confirmation. On their
+one explicit confirmation for the batch, commit `"reviewed <scope>"`. This is also the
 surface a rejected push comes back to: fix the flagged files, run them through
 this same review, then re-push (one review surface for authoring and
 repair, never a silent auto-repush).
@@ -501,7 +519,7 @@ the chat.
 **checkout [subtree]** — Materialize the worktree from server state (the pull
 direction). Fetch from the server, then write the whole tree in one shot with
 the bundled **`scripts/gen_records.py`** — don't hand-write files (same
-reasoning as ingest step 3).
+reasoning as ingest step 4).
 
 1. `list_collections()` → `{"collections": [{collection_id, name, path,
    parent_collection_id, record_count, sub_collection_count}]}`. This call

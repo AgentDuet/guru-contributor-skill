@@ -64,13 +64,31 @@ document's own sections and headings are usually your best signal for where
 the boundaries are. Prefer shallow trees over deep ones: a flatter structure
 is easier for the contributor to review and easier for a reader to navigate.
 
+**One tree per batch, never one tree per document.** When ingesting several
+documents together, read ALL of them before proposing any structure, then
+propose a SINGLE tree for the whole batch. Document boundaries are provenance
+(`source_ref`), not structure: overlapping or related topics from different
+documents share collections. Do not mirror the input folder as one
+collection-per-file — atomize the combined content and let its topics, not its
+filenames, draw the boundaries.
+
+**A new root collection is a structural decision, not a filing convenience.**
+A batch of related documents almost always belongs under ONE root (or inside
+an existing collection the contributor names). If your draft proposes more
+than one new root from a single ingest, treat that as a smell: re-examine
+whether the roots are really independent subtrees, and if you keep them,
+call the choice out explicitly in the tree review rather than letting it
+pass silently.
+
 The server enforces a hard cap on how deep a collection tree can go. Read the
 live value from `whoami.limits.max_path_depth` every session — never hardcode
 a number, the server can change it.
 
-Both extremes are a smell worth reconsidering: a collection holding a single
-record probably didn't need to be its own collection, and a collection holding
-fifty records probably has an internal structure you haven't surfaced yet.
+Extremes are a smell worth reconsidering: a collection holding a single
+record probably didn't need to be its own collection; a collection holding
+fifty records probably has an internal structure you haven't surfaced yet;
+one root (or one collection) per source document means you atomized documents
+independently instead of atomizing the batch.
 
 ## Provenance
 
