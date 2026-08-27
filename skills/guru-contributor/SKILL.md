@@ -498,40 +498,47 @@ record was rejected. Treat it exactly like an `auth_error`: tell the contributor
 their MCP configuration needs fixing, and never ask them to paste a key into
 the chat.
 
-**checkout [subtree]** — Materialize the worktree from server state:
+**checkout [subtree]** — Materialize the worktree from server state (the pull
+direction). Fetch from the server, then write the whole tree in one shot with
+the bundled **`scripts/gen_records.py`** — don't hand-write files (same
+reasoning as ingest step 3).
 
 1. `list_collections()` → `{"collections": [{collection_id, name, path,
    parent_collection_id, record_count, sub_collection_count}]}`. This call
    always returns every collection in the org, flat — there's no server-side
-   subtree filter. With no `[subtree]` given, create a directory + `.collection`
-   marker (from `collection_id` + `name`) for every entry. With `[subtree]`
-   given, first find the entry matching that subtree, then keep only it and
-   its descendants — walk the flat list by `parent_collection_id` (a
-   collection belongs to the subtree if its `parent_collection_id` is the
-   subtree root or any collection already included) — and create directories
-   /markers for only that filtered set.
+   subtree filter. With no `[subtree]`, keep all. With `[subtree]` given, find
+   the matching entry and keep only it and its descendants — walk the flat list
+   by `parent_collection_id` (a collection belongs to the subtree if its
+   `parent_collection_id` is the subtree root or any collection already
+   included).
 2. `list_records(collection_id?, source_ref?, cursor?, limit?)`. The
    `collection_id` filter is **non-recursive**: it returns only records filed
-   directly in that one collection, not in its sub-collections too. For a
-   whole-org checkout, call it once with no `collection_id` filter. For a
-   subtree checkout, there is no single call that covers the subtree — call it
-   once per collection id in the filtered set from step 1, unioning the
-   results. Paginate each call: keep passing its response's `next_cursor` back
-   as `cursor` until a response omits it. (`limit` is clamped server-side to
-   `limits.max_records_per_push` regardless of what you pass.)
+   directly in that one collection, not its sub-collections. For a whole-org
+   checkout, call once with no `collection_id`. For a subtree checkout, call
+   once per collection id in the filtered set from step 1, unioning results.
+   Paginate: keep passing `next_cursor` back as `cursor` until a response omits
+   it. (`limit` is clamped server-side to `limits.max_records_per_push`.)
 3. `get_records(record_ids, include_content=true)`, chunked to
-   `limits.max_records_per_push` — the same per-call cap the server enforces
-   on this and `delete_records`. The `record_id`s step 2 just listed are what
-   you pass in as this call's `record_ids`. Each returned entry carries
-   `subject`, `owner`, `collection`, `path`, `source_type`/`source_ref`, and
-   `content` (body only, front-matter already stripped) — its `path` names the
-   worktree directory the reconstructed file lands in (the same collection
-   directory step 1 created). Reconstruct the record file per
-   `resources/record-format.md` from those fields (`stable_id` = `record_id`,
-   `owner_uuid` = `owner.owner_uuid`) plus the fetched `content` as the body.
-   Anything in `skipped` (`not_found` / `off_shelf` / `content_missing`) has no
-   file to write — note it instead of failing the checkout.
-4. Commit `"checkout <scope>"`.
+   `limits.max_records_per_push`. Each returned entry carries `subject`,
+   `owner`, `collection`, `path`, `source_type`/`source_ref`, and `content`
+   (body only, front-matter already stripped). Anything in `skipped`
+   (`not_found` / `off_shelf` / `content_missing`) has no file to write — note
+   it, don't fail the checkout.
+4. **Materialize via `gen_records.py`.** Write a spec JSON to a FILE with your
+   file tools, then `python3 scripts/gen_records.py <spec.json> <worktree>`:
+   - `collections`: one entry per kept collection from step 1 —
+     `{path, name, collection_id}` (gen_records writes the dir + `.collection`
+     marker, `collection_id` included).
+   - `records`: one entry per fetched record from step 3 —
+     `{path, subject, body: <content>, stable_id: <record_id>,
+     owner_uuid: <owner.owner_uuid>, source_type, source_ref}` (omit
+     `source_type`/`source_ref` for hand-authored records). gen_records emits
+     valid front-matter with the stamped `stable_id`/`owner_uuid` and slugged
+     filenames per `resources/record-format.md`.
+   - **No python?** reconstruct each file by hand per `resources/record-format.md`
+     (`stable_id`=record_id, `owner_uuid`=owner.owner_uuid, body=content) and
+     write the `.collection` markers directly.
+5. Commit `"checkout <scope>"`.
 
 Invariant: pushing a freshly-checked-out worktree back should produce all
 `noop` verdicts and `"removed": []` — that's the sanity check that the
