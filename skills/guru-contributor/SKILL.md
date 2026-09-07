@@ -76,6 +76,14 @@ quotes, f-strings, escapes) and wastes turns. The scripts take their inputs from
   (`~/.guru/credentials.json`). `get` prints a live token (exit 1 if
   absent/expired); `set` reads `{token,expires_at,org_name,owner_name}` JSON from
   **stdin** (never a CLI arg).
+- **`scripts/auth.py {request|exchange|headers}`** — the OTP ceremony + header
+  injection. `request <email> <domain> <org_uuid> <env-url>` sends the code;
+  `exchange <email> <otp> <org_uuid> <env-url>` swaps the code for a bearer and
+  writes it **straight to the token store** (stdout is a redacted receipt — the
+  token never enters your context); `headers <org_uuid>` prints the exact
+  `{"Authorization", "x-user-org-uuid"}` pair for MCP config injection. The
+  script owns auth-URL derivation, routing headers, and the store write — never
+  hand-build any of those.
 - **`scripts/gen_records.py <spec.json> [worktree]`** — emit record `.md` files
   + `.collection` markers from a spec you write to a FILE with your file tools
   (never pass record bodies as shell args). Handles slugs, front-matter order,
@@ -204,10 +212,10 @@ environments.
      prints a live token → **reuse it**, no ceremony, no re-login (this is what
      makes the same org work across folders and lets you switch known orgs
      login-free). Exit 1 = absent or expired → run the ceremony.
-   - After the ceremony mints a token, save it:
-     `echo '{"token":"…","expires_at":"…","org_name":"…","owner_name":"…"}' |
-     python3 scripts/creds.py set <org_uuid>` (token on **stdin**, never a CLI
-     arg). Never store a token anywhere else in plaintext, never echo it.
+   - The ceremony (`scripts/auth.py exchange`) writes the minted token to the
+     store itself — nothing to save by hand. `creds.py set` remains for the
+     break-glass path only (a hand-issued admin key: token on **stdin**, never
+     a CLI arg). Never store a token anywhere else in plaintext, never echo it.
    - (No python? then read/write the JSON with your file tools — merge, don't
      clobber other orgs — and `chmod 600` it.)
 4. Register the server for the host you're running in, using the token from
@@ -254,8 +262,8 @@ environments.
    as literals (no runtime env expansion) — so exactly one org is active per
    machine; you *switch* it, you don't scope it per folder. Run:
    `agy mcp add -H "Authorization: Bearer <token literal>" -H
-   "x-user-org-uuid: <org_uuid literal>" libra <env-url>` (both literals from
-   the store), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
+   "x-user-org-uuid: <org_uuid literal>" libra <env-url>` (read both values
+   from `scripts/auth.py headers <org_uuid>` — one source for the pair), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
    token and agy leaves it world-readable). One command covers CLI + desktop.
    Tell the contributor agy is now globally pointed at THIS org until switched
    again — two orgs are never active on agy at once.
@@ -295,15 +303,12 @@ way in — save that straight to the store under its org and skip the ceremony):
       environment registry, or any other ambient source — ask. (domain and
       org_uuid in chat are both fine — neither is a credential, unlike the
       bearer itself.)
-   2. Derive the auth base from the env-url, don't rebuild it from the host:
-      take the env's MCP URL and replace its `/private/v1/mcp` tail with
-      `/public/v1/auth/request`. This preserves any gateway path prefix (prod
-      is `.../library/private/v1/mcp` → `.../library/public/v1/auth/request`;
-      local has no prefix). Never strip back to the bare host — you'd drop the
-      prefix and hit the wrong service. Call `POST <that URL> {email, domain,
-      org_uuid}` — and set the header `x-user-org-uuid: <org_uuid>` on this
-      call (same value as the body's org_uuid; the public gateway routes to
-      the right environment by that header). Its shapes:
+   2. Run `python3 scripts/auth.py request <email> <domain> <org_uuid>
+      <env-url>` — pass the env's MCP URL verbatim; the script derives the
+      auth base itself (preserving any gateway path prefix), sets the
+      `x-user-org-uuid` routing header, and refuses a URL that doesn't end in
+      `/private/v1/mcp` rather than guess. It prints the server's verdict;
+      its shapes:
       - `sent` — tell the contributor a 6-digit code is on its way to that
         inbox, single-use, expires in 5 minutes, and ask them to read it back
         to you when it arrives. Saying the code itself in chat is fine and
@@ -342,19 +347,17 @@ way in — save that straight to the store under its org and skip the ceremony):
         credential leak). Tell the contributor something went wrong on the
         server and to try again shortly; if it repeats, that's one to escalate
         rather than keep retrying blindly.
-   3. Once the contributor gives you the code, call `POST <auth base>/exchange
-      {email, otp}` — the same base you derived in step 2 (env-url with
-      `/private/v1/mcp` swapped for `/public/v1/auth`), NOT the bare host —
-      also with the header
-      `x-user-org-uuid: <org_uuid>` (same routing rule as the request call).
+   3. Once the contributor gives you the code, run `python3 scripts/auth.py
+      exchange <email> <otp> <org_uuid> <env-url>` (same env-url as step 2).
       Its shapes:
-      - a bearer token — this is the one moment the credential is in your
-        context. Save it to the **token store** (`~/.guru/credentials.json`,
-        `chmod 600`) under this org_uuid, with `expires_at` and, if you have
-        them, `org_name`/`owner_name`. Never print, log, or repeat it back in
-        chat. Then continue to step 4 (register) — global mode also copies it
-        into the `LIBRA_CONTRIB_KEY`/`LIBRA_ORG_UUID` env vars; per-folder and
-        agy modes read the literal straight from the store.
+      - `{"status": "issued", …}` — the bearer was minted and written
+        **straight to the token store by the script**; it never appears in
+        your context, so there is nothing to save and nothing to redact.
+        Continue to step 4 (register) — materialize the credential only at
+        the moment you write the MCP config, via `scripts/auth.py headers
+        <org_uuid>` (the exact header pair) or `creds.py get` (bare token);
+        global mode copies it into the `LIBRA_CONTRIB_KEY`/`LIBRA_ORG_UUID`
+        env vars.
       - `otp_invalid` — wrong code. Ask the contributor to retype it
         carefully (typos, transposed digits) and retry the exchange with the
         same code before it expires. Five wrong attempts burn the OTP outright
