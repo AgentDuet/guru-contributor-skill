@@ -84,6 +84,14 @@ quotes, f-strings, escapes) and wastes turns. The scripts take their inputs from
   `{"Authorization", "x-user-org-uuid"}` pair for MCP config injection. The
   script owns auth-URL derivation, routing headers, and the store write — never
   hand-build any of those.
+- **`scripts/mcp.py {tools|call}`** — the MCP client for hosts WITHOUT a working
+  native MCP harness. `tools <org_uuid> <env-url>` lists the server's tools with
+  schemas; `call <tool> <org_uuid> <env-url>` invokes one, arguments as a JSON
+  object on **stdin** (never CLI args), result JSON on stdout. It owns the whole
+  wire protocol — handshake, session id, auth headers from the store, JSON/SSE
+  response parsing. **Routing rule:** when the session exposes native libra MCP
+  tools, use those; when it doesn't, every libra call goes through this script —
+  NEVER hand-compose HTTP/curl against the MCP endpoint in either case.
 - **`scripts/gen_records.py <spec.json> [worktree]`** — emit record `.md` files
   + `.collection` markers from a spec you write to a FILE with your file tools
   (never pass record bodies as shell args). Handles slugs, front-matter order,
@@ -181,6 +189,11 @@ If `whoami` is absent or fails outright, the libra MCP tools aren't reachable
 in this session yet — run **connect** (below) before anything else in this
 skill. (After connect succeeds, run the org confirmation above before writing.)
 
+No native `whoami` tool in the session at all? Use the bundled client instead —
+`echo '{}' | python3 scripts/mcp.py call whoami <org_uuid> <env-url>` — and run
+the whole session through `scripts/mcp.py` (see Bundled scripts): same tools,
+same contracts, no host MCP registration or restart needed.
+
 ## Workflows
 
 Call `whoami` once at session start (see Session start above) before any of these —
@@ -226,6 +239,14 @@ environments.
    permission prompt on the write IS the consent gate; connect never registers
    silently. Each target ends with a reload the contributor must perform (see
    step 5) — the config never hot-loads.
+
+   **Helper mode — hosts without a usable native MCP harness:** if the host
+   cannot register a streamable-HTTP server with custom auth headers, or a
+   registration was done and the tools still don't appear in a fresh session,
+   don't fight the host: **skip registration entirely** and run every libra
+   call through `scripts/mcp.py` (auth from the store — nothing else to wire,
+   no reload needed; step 5 doesn't apply). Verify with the helper `whoami`
+   and continue the session normally.
 
    **Claude Code (CLI) — two modes; ask which, default global:**
    - *Global* (the comfortable default for a one-org contributor): a
