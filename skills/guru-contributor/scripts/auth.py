@@ -7,28 +7,41 @@ into the credential store (~/.guru/credentials.json, via creds.py) without ever
 passing through the agent's context.
 
 Commands:
-    auth.py request  <email> <domain> <org_uuid> <env_mcp_url>
-        POST <auth-base>/request. Prints the server's JSON verdict verbatim
-        ({"status": "sent", ...} or {"error": ...}) — nothing secret in it.
+    auth.py request  <email> <ba_uid> <env_mcp_url>
+        POST <auth-base>/request with body {"ba_uid": ..., "email": ...} (no
+        portal domain — there is no domain input in this ceremony). Prints the
+        server's JSON verdict verbatim, then a plain-language line for the
+        agent to relay:
+          - "sent"                 -> a code is on its way; proceed to exchange.
+          - "first_contact_required" -> the C2 instruction, verbatim; do NOT
+            proceed to the OTP prompt.
+          - "not_available"        -> the workspace isn't set up yet.
+          - "otp_pending" / "rate_limited" / "send_failed" / "internal_error"
+            -> their own short message.
         Exit 0 on "sent", 1 on any other shape.
 
-    auth.py exchange <email> <otp> <org_uuid> <env_mcp_url>
+    auth.py exchange <email> <otp> <ba_uid> <env_mcp_url>
         POST <auth-base>/exchange. On success the bearer is written straight
-        to the store under <org_uuid>; stdout gets a REDACTED receipt only
-        ({"status": "issued", "owner_name": ..., "expires_at": ...}) — the
+        to the store under <ba_uid>; stdout gets a REDACTED receipt only
+        ({"status": "issued", "display_name": ..., "expires_at": ...}) — the
         token itself is never printed. Exit 0 issued, 1 otherwise.
 
-    auth.py headers  <org_uuid>
+    auth.py headers  <ba_uid>
         Print the MCP auth headers as JSON from the stored live token:
-        {"Authorization": "Bearer <token>", "x-user-org-uuid": "<org_uuid>"}.
+        {"Authorization": "Bearer <token>", "x-user-org-uuid": "<ba_uid>"}.
         This is the ONE sanctioned way to materialize the credential for MCP
-        config injection (same job as `creds.py get`, plus the org header, so
-        every consumer builds identical headers). Exit 1 if absent/expired.
+        config injection (same job as `creds.py get`, plus the routing
+        header, so every consumer builds identical headers). Exit 1 if
+        absent/expired.
 
 The <env_mcp_url> is the environment's MCP URL from resources/environments.md.
 The auth base is DERIVED from it — the trailing `/private/v1/mcp` is replaced
 with `/public/v1/auth` — which preserves any gateway path prefix. A URL that
 does not end in /private/v1/mcp is refused rather than guessed at.
+
+`x-user-org-uuid` here is the igw ROUTING header (b3 internal-gateway routing
+by workspace), not an identity claim — it carries the ba_uid so the request
+reaches the right backend. It stays on every request regardless of outcome.
 
 The OTP is fine as a CLI argument: it is single-use, 5-minute, and burns on
 exchange — worthless in shell history. The bearer is the secret, and it never
@@ -46,6 +59,39 @@ import creds  # sibling module — the credential store (read/merge/write, 0600)
 _MCP_TAIL = "/private/v1/mcp"
 _TIMEOUT_S = 30
 
+# Human-facing lines for each `request` outcome code. The C2 instruction is
+# verbatim per the spec (impl/specs/2026-09-14-contributor-first-contact-otp.md §2.1/§5)
+# — do not paraphrase it.
+_REQUEST_MESSAGES = {
+    "sent": (
+        "A 6-digit code is on its way to that inbox, single-use, expires in "
+        "5 minutes. Ask the contributor to read it back to you, then run exchange."
+    ),
+    "first_contact_required": (
+        "You haven't reached this workspace's librarian yet. Open a chat "
+        "with it on agentduet.com from your own account, then run connect again."
+    ),
+    "not_available": "This workspace isn't set up for contribution.",
+    "otp_pending": (
+        "A live code for this email already exists. Check the inbox for the "
+        "one already sent, or wait for it to expire before requesting a new one."
+    ),
+    "rate_limited": (
+        "Too many requests for this email or network address in the current "
+        "window. Wait before trying again — don't retry immediately."
+    ),
+    "send_failed": (
+        "The code was minted but delivery failed. Safe to retry request once; "
+        "repeated failures can tip into rate_limited."
+    ),
+    "internal_error": (
+        "Unexpected server-side fault. Try again shortly; escalate if it repeats."
+    ),
+}
+
+# Codes that mean the ceremony should continue on to prompt for the OTP.
+_PROCEED_TO_OTP = {"sent"}
+
 
 def _auth_base(env_mcp_url: str) -> str:
     url = env_mcp_url.rstrip("/")
@@ -57,13 +103,13 @@ def _auth_base(env_mcp_url: str) -> str:
     return url[: -len(_MCP_TAIL)] + "/public/v1/auth"
 
 
-def _post(url: str, org_uuid: str, body: dict) -> dict:
+def _post(url: str, ba_uid: str, body: dict) -> dict:
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "x-user-org-uuid": org_uuid,
+            "x-user-org-uuid": ba_uid,
         },
         method="POST",
     )
@@ -81,15 +127,19 @@ def _post(url: str, org_uuid: str, body: dict) -> dict:
         return {"error": "bad_response", "detail": raw[:200].decode("utf-8", "replace")}
 
 
-def cmd_request(email: str, domain: str, org_uuid: str, env_mcp_url: str) -> int:
-    result = _post(_auth_base(env_mcp_url) + "/request", org_uuid,
-                   {"email": email, "domain": domain, "org_uuid": org_uuid})
+def cmd_request(email: str, ba_uid: str, env_mcp_url: str) -> int:
+    result = _post(_auth_base(env_mcp_url) + "/request", ba_uid,
+                   {"ba_uid": ba_uid, "email": email})
     print(json.dumps(result, indent=2))
-    return 0 if result.get("status") == "sent" else 1
+    status = result.get("status")
+    message = _REQUEST_MESSAGES.get(status)
+    if message:
+        print(message, file=sys.stderr)
+    return 0 if status in _PROCEED_TO_OTP else 1
 
 
-def cmd_exchange(email: str, otp: str, org_uuid: str, env_mcp_url: str) -> int:
-    result = _post(_auth_base(env_mcp_url) + "/exchange", org_uuid,
+def cmd_exchange(email: str, otp: str, ba_uid: str, env_mcp_url: str) -> int:
+    result = _post(_auth_base(env_mcp_url) + "/exchange", ba_uid,
                    {"email": email, "otp": otp})
     token = result.get("token")
     if not token:
@@ -97,13 +147,14 @@ def cmd_exchange(email: str, otp: str, org_uuid: str, env_mcp_url: str) -> int:
         return 1
     # Bearer goes straight to the store — never to stdout, never into context.
     data = creds._load()
-    entry = data.get(org_uuid, {})
-    entry.update({k: result[k] for k in ("token", "expires_at", "owner_name") if k in result})
-    data[org_uuid] = entry
+    entry = data.get(ba_uid, {})
+    entry.update({k: result[k] for k in ("token", "expires_at", "display_name", "owner_name") if k in result})
+    data[ba_uid] = entry
     creds._save(data)
     receipt = {
         "status": "issued",
-        "org_uuid": org_uuid,
+        "ba_uid": ba_uid,
+        "display_name": result.get("display_name"),
         "owner_name": result.get("owner_name"),
         "expires_at": result.get("expires_at"),
         "stored": creds.STORE,
@@ -112,24 +163,24 @@ def cmd_exchange(email: str, otp: str, org_uuid: str, env_mcp_url: str) -> int:
     return 0
 
 
-def cmd_headers(org_uuid: str) -> int:
-    entry = creds._load().get(org_uuid)
+def cmd_headers(ba_uid: str) -> int:
+    entry = creds._load().get(ba_uid)
     if not entry or not entry.get("token") or creds._expired(entry):
-        print(f"auth.py headers: no live token for org {org_uuid} — run the "
+        print(f"auth.py headers: no live token for workspace {ba_uid} — run the "
               "connect ceremony (request + exchange) first", file=sys.stderr)
         return 1
     print(json.dumps({
         "Authorization": f"Bearer {entry['token']}",
-        "x-user-org-uuid": org_uuid,
+        "x-user-org-uuid": ba_uid,
     }, indent=2))
     return 0
 
 
 def main(argv: list[str]) -> int:
     usage = {
-        "request": (4, "auth.py request <email> <domain> <org_uuid> <env_mcp_url>"),
-        "exchange": (4, "auth.py exchange <email> <otp> <org_uuid> <env_mcp_url>"),
-        "headers": (1, "auth.py headers <org_uuid>"),
+        "request": (3, "auth.py request <email> <ba_uid> <env_mcp_url>"),
+        "exchange": (4, "auth.py exchange <email> <otp> <ba_uid> <env_mcp_url>"),
+        "headers": (1, "auth.py headers <ba_uid>"),
     }
     if len(argv) < 2 or argv[1] not in usage:
         print(__doc__, file=sys.stderr)
@@ -141,7 +192,7 @@ def main(argv: list[str]) -> int:
         return 2
     try:
         if cmd == "request":
-            return cmd_request(*argv[2:6])
+            return cmd_request(*argv[2:5])
         if cmd == "exchange":
             return cmd_exchange(*argv[2:6])
         return cmd_headers(argv[2])

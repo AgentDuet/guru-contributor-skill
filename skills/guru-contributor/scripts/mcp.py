@@ -11,11 +11,11 @@ response framings. On hosts WITH working native MCP tools, use those — this
 script is the fallback, not a replacement.
 
 Commands:
-    mcp.py tools <org_uuid> <env_mcp_url>
+    mcp.py tools <ba_uid> <env_mcp_url>
         List the server's tools: prints {"tools": [{name, description,
         inputSchema}, ...]}.
 
-    mcp.py call <tool_name> <org_uuid> <env_mcp_url>
+    mcp.py call <tool_name> <ba_uid> <env_mcp_url>
         Call one tool. Arguments are a JSON object on STDIN (empty stdin = {})
         — never CLI args (quoting breaks). Prints the tool result:
         structuredContent when the server provides it, otherwise the text
@@ -42,16 +42,16 @@ class McpError(Exception):
     pass
 
 
-def _auth_headers(org_uuid: str) -> dict:
-    entry = creds._load().get(org_uuid)
+def _auth_headers(ba_uid: str) -> dict:
+    entry = creds._load().get(ba_uid)
     if not entry or not entry.get("token") or creds._expired(entry):
         raise McpError(
-            f"no live token for org {org_uuid} — run the connect ceremony "
+            f"no live token for workspace {ba_uid} — run the connect ceremony "
             "(scripts/auth.py request + exchange) first"
         )
     return {
         "Authorization": f"Bearer {entry['token']}",
-        "x-user-org-uuid": org_uuid,
+        "x-user-org-uuid": ba_uid,
     }
 
 
@@ -76,9 +76,9 @@ class Session:
     """One MCP session per invocation: initialize -> initialized -> use.
     Best-effort DELETE on close so the server can reap the session."""
 
-    def __init__(self, url: str, org_uuid: str) -> None:
+    def __init__(self, url: str, ba_uid: str) -> None:
         self._url = url.rstrip("/")
-        self._headers = _auth_headers(org_uuid)
+        self._headers = _auth_headers(ba_uid)
         self._session_id: str | None = None
         self._next_id = 1
 
@@ -172,8 +172,8 @@ class Session:
             return joined, is_error
 
 
-def cmd_tools(org_uuid: str, url: str) -> int:
-    s = Session(url, org_uuid)
+def cmd_tools(ba_uid: str, url: str) -> int:
+    s = Session(url, ba_uid)
     s.open()
     try:
         print(json.dumps(s.tools(), indent=2))
@@ -182,7 +182,7 @@ def cmd_tools(org_uuid: str, url: str) -> int:
         s.close()
 
 
-def cmd_call(tool: str, org_uuid: str, url: str) -> int:
+def cmd_call(tool: str, ba_uid: str, url: str) -> int:
     stdin = sys.stdin.read().strip()
     try:
         arguments = json.loads(stdin) if stdin else {}
@@ -192,7 +192,7 @@ def cmd_call(tool: str, org_uuid: str, url: str) -> int:
     if not isinstance(arguments, dict):
         print("mcp.py call: stdin JSON must be an object", file=sys.stderr)
         return 2
-    s = Session(url, org_uuid)
+    s = Session(url, ba_uid)
     s.open()
     try:
         result, is_error = s.call(tool, arguments)

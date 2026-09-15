@@ -5,7 +5,7 @@
       "url": "https://api-eks.b3networks.com/library/private/v1/mcp",
       "headers": {
         "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
-        "x-user-org-uuid": "${LIBRA_ORG_UUID}"
+        "x-user-org-uuid": "${LIBRA_BA_UID}"
       }
     }
   }

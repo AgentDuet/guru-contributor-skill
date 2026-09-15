@@ -85,7 +85,9 @@ reading `records`/`collections`:
 | `error` | Meaning | Agent action |
 |---|---|---|
 | `auth_error` | the credential/config behind this MCP call needs attention | tell the contributor their MCP credential/config needs fixing; never ask them to paste a key into the conversation, and never echo one back |
-| `org_not_enabled` (HTTP 403) | the org was disabled for contribution after the token was issued (the token itself is still valid) | stop; tell the contributor their organization's contribution access has been turned off and to contact their admin — retrying won't help until it's re-enabled |
+| `org_not_enabled` (HTTP 403, on an MCP tool call — not connect) | the workspace's contribution access was turned off after your token was issued (the token itself is still valid) | stop; tell the contributor to contact their workspace admin — retrying won't help until it's re-enabled |
+| `first_contact_required` | (surfaced by `/public/v1/auth/request` during the **connect** ceremony, not by the MCP tools above) this workspace is provisioned, but this email has never chatted its librarian | stop; tell the contributor exactly: "You haven't reached this workspace's librarian yet. Open a chat with it on agentduet.com from your own account, then run connect again." Don't proceed to the OTP prompt — see the **connect** ceremony's shape list in SKILL.md |
+| `not_available` | (surfaced by `/public/v1/auth/request` during the **connect** ceremony) this workspace isn't set up for contribution | stop; tell the contributor this workspace isn't set up for contribution — retrying won't help |
 | `bad_batch` | this whole call (not one item) exceeded a cap, e.g. too many ids in one `delete_records`/`get_records` | chunk the call and retry |
 | `bad_cursor` | a `list_records` cursor wasn't a value the server handed back (treat cursors as opaque; always pass one through unmodified) | drop the cursor and restart pagination from the top |
 | `internal_error` | server-side failure | retry once; if it fails again, surface it to the contributor rather than looping |

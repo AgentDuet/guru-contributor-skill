@@ -72,21 +72,21 @@ quotes, f-strings, escapes) and wastes turns. The scripts take their inputs from
 - **`scripts/convert.py <file>`** — Office doc (`.docx/.pptx/.xlsx`) → text,
   stdlib-only, cross-platform. No-python fallbacks: `scripts/convert.sh <file>`
   (macOS/Linux), `scripts/convert.ps1 <file>` (Windows).
-- **`scripts/creds.py {get|show|set|list} <org_uuid>`** — the token store
+- **`scripts/creds.py {get|show|set|list} <ba_uid>`** — the token store
   (`~/.guru/credentials.json`). `get` prints a live token (exit 1 if
-  absent/expired); `set` reads `{token,expires_at,org_name,owner_name}` JSON from
+  absent/expired); `set` reads `{token,expires_at,display_name,owner_name}` JSON from
   **stdin** (never a CLI arg).
 - **`scripts/auth.py {request|exchange|headers}`** — the OTP ceremony + header
-  injection. `request <email> <domain> <org_uuid> <env-url>` sends the code;
-  `exchange <email> <otp> <org_uuid> <env-url>` swaps the code for a bearer and
+  injection. `request <email> <ba_uid> <env-url>` sends the code;
+  `exchange <email> <otp> <ba_uid> <env-url>` swaps the code for a bearer and
   writes it **straight to the token store** (stdout is a redacted receipt — the
-  token never enters your context); `headers <org_uuid>` prints the exact
+  token never enters your context); `headers <ba_uid>` prints the exact
   `{"Authorization", "x-user-org-uuid"}` pair for MCP config injection. The
   script owns auth-URL derivation, routing headers, and the store write — never
   hand-build any of those.
 - **`scripts/mcp.py {tools|call}`** — the MCP client for hosts WITHOUT a working
-  native MCP harness. `tools <org_uuid> <env-url>` lists the server's tools with
-  schemas; `call <tool> <org_uuid> <env-url>` invokes one, arguments as a JSON
+  native MCP harness. `tools <ba_uid> <env-url>` lists the server's tools with
+  schemas; `call <tool> <ba_uid> <env-url>` invokes one, arguments as a JSON
   object on **stdin** (never CLI args), result JSON on stdout. It owns the whole
   wire protocol — handshake, session id, auth headers from the store, JSON/SSE
   response parsing. **Routing rule:** when the session exposes native libra MCP
@@ -140,36 +140,38 @@ Git powers the worktree's **local safety net**: checkpoint commits and undo
 Before doing anything else in a session, call the `whoami` MCP tool. It returns:
 
 ```
-{ org_name, org_uuid, identity_uuid, owner_name, limits }
+{ ba_uid, user_uid, display_name, owner_name, limits }
 ```
 
-### Org confirmation — MANDATORY, no exception
+### Workspace confirmation — MANDATORY, no exception
 
-Contributions are org-scoped and irreversible-ish (they land in a real shared
-knowledge base). A contributor working across several orgs/environments can
-easily have the wrong one active. So **before any contribution action in a
-session — push_records, push_collections, delete_records, or an edit — you MUST
-show the contributor the active org and get an explicit yes/no confirmation.**
+Contributions are workspace-scoped and irreversible-ish (they land in a real
+shared knowledge base). A contributor working across several
+workspaces/environments can easily have the wrong one active. So **before any
+contribution action in a session — push_records, push_collections,
+delete_records, or an edit — you MUST show the contributor the active
+workspace and get an explicit yes/no confirmation.**
 
 Show it plainly, name first (a UUID is not something a human can eyeball):
 
 ```
-You are connected to:  <org_name>   (<org_uuid>)
+You are connected to:  <display_name>   (<ba_uid>)
 Contributing as:       <owner_name>
-Proceed with this organization? (yes / no)
+Proceed with this workspace? (yes / no)
 ```
 
 Rules, no exceptions:
 - Do this once per session, at the start (or immediately after a **connect** /
-  org switch), and always before the first write.
+  workspace switch), and always before the first write.
 - Require an explicit **yes**. Silence, "go ahead with the task", or any
   instruction that isn't a clear yes to *this* question does NOT count — ask
   again. Read-only calls (whoami, list_*, get_records) are fine before the
   confirm; nothing that writes is.
-- On **no**: stop. Do not push anything. Offer **connect** to switch org, or
-  end. Never proceed to a write on an unconfirmed org.
-- If `org_name` equals `org_uuid` (the server couldn't resolve a display name),
-  say so explicitly and still require the yes/no — do not pretend you have a
+- On **no**: stop. Do not push anything. Offer **connect** to switch
+  workspace, or end. Never proceed to a write on an unconfirmed workspace.
+- If `display_name` is empty or missing (the server couldn't resolve a
+  display name), fall back to showing `ba_uid` in its place, say so
+  explicitly, and still require the yes/no — do not pretend you have a
   friendly name you don't.
 
 ### Limits
@@ -187,10 +189,11 @@ Never hardcode any of these; the server can change them at any time.
 
 If `whoami` is absent or fails outright, the libra MCP tools aren't reachable
 in this session yet — run **connect** (below) before anything else in this
-skill. (After connect succeeds, run the org confirmation above before writing.)
+skill. (After connect succeeds, run the workspace confirmation above before
+writing.)
 
 No native `whoami` tool in the session at all? Use the bundled client instead —
-`echo '{}' | python3 scripts/mcp.py call whoami <org_uuid> <env-url>` — and run
+`echo '{}' | python3 scripts/mcp.py call whoami <ba_uid> <env-url>` — and run
 the whole session through `scripts/mcp.py` (see Bundled scripts): same tools,
 same contracts, no host MCP registration or restart needed.
 
@@ -216,21 +219,22 @@ environments.
 2. Check for an existing `libra` registration. If one exists, show its current
    URL and offer keep or switch; switch means rewriting that entry with the
    new URL, nothing more.
-3. Ensure a live token for the target org, via the local **token store** — so
-   the contributor logs in once *per org*, not once per folder:
+3. Ensure a live token for the target workspace, via the local **token store**
+   — so the contributor logs in once *per workspace*, not once per folder:
    Use the bundled **`scripts/creds.py`** for all store access — never hand-edit
    the JSON or compose inline python. The store is `~/.guru/credentials.json`
-   (`org_uuid -> { token, expires_at, org_name, owner_name }`, `chmod 600`).
-   - Look up the target org: `python3 scripts/creds.py get <org_uuid>`. Exit 0
-     prints a live token → **reuse it**, no ceremony, no re-login (this is what
-     makes the same org work across folders and lets you switch known orgs
-     login-free). Exit 1 = absent or expired → run the ceremony.
+   (`ba_uid -> { token, expires_at, display_name, owner_name }`, `chmod 600`).
+   - Look up the target workspace: `python3 scripts/creds.py get <ba_uid>`.
+     Exit 0 prints a live token → **reuse it**, no ceremony, no re-login (this
+     is what makes the same workspace work across folders and lets you switch
+     known workspaces login-free). Exit 1 = absent or expired → run the
+     ceremony.
    - The ceremony (`scripts/auth.py exchange`) writes the minted token to the
      store itself — nothing to save by hand. `creds.py set` remains for the
      break-glass path only (a hand-issued admin key: token on **stdin**, never
      a CLI arg). Never store a token anywhere else in plaintext, never echo it.
    - (No python? then read/write the JSON with your file tools — merge, don't
-     clobber other orgs — and `chmod 600` it.)
+     clobber other workspaces — and `chmod 600` it.)
 4. Register the server for the host you're running in, using the token from
    step 3. **First determine the host** — Claude Code CLI, Antigravity (agy,
    CLI or desktop), Claude Cowork (the Claude desktop app), or another
@@ -249,24 +253,25 @@ environments.
    and continue the session normally.
 
    **Claude Code (CLI) — two modes; ask which, default global:**
-   - *Global* (the comfortable default for a one-org contributor): a
+   - *Global* (the comfortable default for a one-workspace contributor): a
      **user-scoped** `.mcp.json` with env-var references, plus the two env vars
      set from the store:
      ```json
      { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
        "headers": { "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
-                    "x-user-org-uuid": "${LIBRA_ORG_UUID}" } } } }
+                    "x-user-org-uuid": "${LIBRA_BA_UID}" } } } }
      ```
-     Set `LIBRA_CONTRIB_KEY` (the store's token) and `LIBRA_ORG_UUID` (the org)
-     in the contributor's shell profile / secret manager. One active org per
-     machine; works in every folder.
-   - *Per-folder* (for testing several orgs/envs at once): a **project-scoped**
-     `.mcp.json` in THIS folder with the org and token **inline as literals**
-     from the store, so each folder pins its own org:
+     Set `LIBRA_CONTRIB_KEY` (the store's token) and `LIBRA_BA_UID` (the
+     workspace id) in the contributor's shell profile / secret manager. One
+     active workspace per machine; works in every folder.
+   - *Per-folder* (for testing several workspaces/envs at once): a
+     **project-scoped** `.mcp.json` in THIS folder with the workspace id and
+     token **inline as literals** from the store, so each folder pins its own
+     workspace:
      ```json
      { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
        "headers": { "Authorization": "Bearer <token literal>",
-                    "x-user-org-uuid": "<org_uuid literal>" } } } }
+                    "x-user-org-uuid": "<ba_uid literal>" } } } }
      ```
      The token is a secret in a project file — **ensure `.mcp.json` is
      gitignored in that repo before writing it**, and tell the contributor it
@@ -277,19 +282,19 @@ environments.
    *Per-folder is a Claude Code CLI-only capability* — the other three hosts
    have a single global config (see below).
 
-   **Antigravity (agy) — CLI AND desktop 2.x, one command — switch-active-org:**
+   **Antigravity (agy) — CLI AND desktop 2.x, one command — switch-active-workspace:**
    agy keeps ONE global registration at `~/.gemini/config/mcp_config.json`
    which **both the CLI and the 2.x desktop app read**, and bakes header values
-   as literals (no runtime env expansion) — so exactly one org is active per
-   machine; you *switch* it, you don't scope it per folder. Run:
+   as literals (no runtime env expansion) — so exactly one workspace is active
+   per machine; you *switch* it, you don't scope it per folder. Run:
    `agy mcp add -H "Authorization: Bearer <token literal>" -H
-   "x-user-org-uuid: <org_uuid literal>" libra <env-url>` (read both values
-   from `scripts/auth.py headers <org_uuid>` — one source for the pair), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
+   "x-user-org-uuid: <ba_uid literal>" libra <env-url>` (read both values
+   from `scripts/auth.py headers <ba_uid>` — one source for the pair), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
    token and agy leaves it world-readable). One command covers CLI + desktop.
-   Tell the contributor agy is now globally pointed at THIS org until switched
-   again — two orgs are never active on agy at once.
+   Tell the contributor agy is now globally pointed at THIS workspace until
+   switched again — two workspaces are never active on agy at once.
 
-   **Claude Cowork (Claude desktop app) — global, one active org:**
+   **Claude Cowork (Claude desktop app) — global, one active workspace:**
    Cowork reads `claude_desktop_config.json` (macOS:
    `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows:
    `%APPDATA%\Claude\claude_desktop_config.json`). It expects **literal**
@@ -298,9 +303,10 @@ environments.
    ```json
    { "mcpServers": { "libra": { "url": "<env-url>",
      "headers": { "Authorization": "Bearer <token literal>",
-                  "x-user-org-uuid": "<org_uuid literal>" } } } }
+                  "x-user-org-uuid": "<ba_uid literal>" } } } }
    ```
-   One active org per machine (like agy) — to switch org, rewrite this entry.
+   One active workspace per machine (like agy) — to switch workspace, rewrite
+   this entry.
    The skill itself installs into Cowork separately from this MCP wiring — the
    contributor adds it via **Customize → Skills → ➕ → Upload a skill** (a ZIP),
    or drops it under `.claude/skills/`; connect only writes the MCP config.
@@ -311,20 +317,17 @@ environments.
    invent a path.
 
 **Ceremony** — mint a fresh bearer. Run by step 3 ONLY when the store has no
-live token for the target org (a hand-issued admin/break-glass key is the other
-way in — save that straight to the store under its org and skip the ceremony):
-   1. Ask the contributor for THREE things together, in the same ask — the
-      request call needs all three:
+live token for the target workspace (a hand-issued admin/break-glass key is
+the other way in — save that straight to the store under its workspace id and
+skip the ceremony):
+   1. Ask the contributor for TWO things together, in the same ask — the
+      request call needs both:
       - their work email
-      - the org's **portal** domain (e.g. `portal.hoiio.net`) — explain this
-        is the domain their org's portal uses, NOT necessarily the domain
-        their email address is on; the two are often different
-      - their org_uuid
-      Never guess any of the three, never pull them from git config, the
-      environment registry, or any other ambient source — ask. (domain and
-      org_uuid in chat are both fine — neither is a credential, unlike the
-      bearer itself.)
-   2. Run `python3 scripts/auth.py request <email> <domain> <org_uuid>
+      - their workspace id (`ba_uid`)
+      Never guess either, never pull them from git config, the environment
+      registry, or any other ambient source — ask. (both are fine to hear back
+      in chat — neither is a credential, unlike the bearer itself.)
+   2. Run `python3 scripts/auth.py request <email> <ba_uid>
       <env-url>` — pass the env's MCP URL verbatim; the script derives the
       auth base itself (preserving any gateway path prefix), sets the
       `x-user-org-uuid` routing header, and refuses a URL that doesn't end in
@@ -334,22 +337,20 @@ way in — save that straight to the store under its org and skip the ceremony):
         inbox, single-use, expires in 5 minutes, and ask them to read it back
         to you when it arrives. Saying the code itself in chat is fine and
         expected — it burns the moment it's used (or in 5 minutes,
-        whichever's first), so it's worthless to anyone after that.
+        whichever's first), so it's worthless to anyone after that. Proceed to
+        step 3.
+      - `first_contact_required` — this workspace is provisioned, but this
+        email has never chatted its librarian. Do **NOT** proceed to the OTP
+        prompt. Tell the contributor exactly this: *"You haven't reached this
+        workspace's librarian yet. Open a chat with it on agentduet.com from
+        your own account, then run connect again."* Stop here.
+      - `not_available` — this workspace isn't set up for contribution at all
+        (a generic code — provisioning state isn't enumerable further). Tell
+        the contributor plainly: *"This workspace isn't set up for
+        contribution."* Stop; don't retry — re-requesting won't change it.
       - `otp_pending` — a live code for this email already exists. Tell them
         to check their inbox for the one already sent, or wait for it to
         expire before requesting a new one.
-      - `not_a_member` — either the (email, domain) pair didn't resolve to a
-        known identity, or the identity it resolved to isn't a member of that
-        org_uuid. Stop here and tell the contributor to double-check all
-        three values (email, portal domain, and org_uuid), or contact their
-        admin if they're confident all three are right; don't retry
-        automatically.
-      - `org_not_enabled` — the org itself hasn't been enabled for
-        contribution yet (this is separate from membership — the org must be
-        opened on the Libra side first). Stop; tell the contributor their
-        organization isn't enabled to contribute yet and to ask their admin to
-        have it provisioned/opened. Don't retry — re-requesting won't change
-        it until the org is opened.
       - `send_failed` — the code was minted but delivery failed (a notification-
         service hiccup). Nothing is pending, so it's safe to just retry step 2
         — tell the contributor delivery failed and you're trying again. If
@@ -369,37 +370,39 @@ way in — save that straight to the store under its org and skip the ceremony):
         server and to try again shortly; if it repeats, that's one to escalate
         rather than keep retrying blindly.
    3. Once the contributor gives you the code, run `python3 scripts/auth.py
-      exchange <email> <otp> <org_uuid> <env-url>` (same env-url as step 2).
+      exchange <email> <otp> <ba_uid> <env-url>` (same env-url as step 2).
       Its shapes:
       - `{"status": "issued", …}` — the bearer was minted and written
         **straight to the token store by the script**; it never appears in
         your context, so there is nothing to save and nothing to redact.
         Continue to step 4 (register) — materialize the credential only at
         the moment you write the MCP config, via `scripts/auth.py headers
-        <org_uuid>` (the exact header pair) or `creds.py get` (bare token);
-        global mode copies it into the `LIBRA_CONTRIB_KEY`/`LIBRA_ORG_UUID`
+        <ba_uid>` (the exact header pair) or `creds.py get` (bare token);
+        global mode copies it into the `LIBRA_CONTRIB_KEY`/`LIBRA_BA_UID`
         env vars.
       - `otp_invalid` — wrong code. Ask the contributor to retype it
         carefully (typos, transposed digits) and retry the exchange with the
         same code before it expires. Five wrong attempts burn the OTP outright
         — if that happens, go back to step 2 and request a fresh one.
-   4. Confirm the token landed in the store under the right org_uuid, then
+   4. Confirm the token landed in the store under the right ba_uid, then
       return to step 4 (register) to wire it into the agent — never ask for the
       key value back, never echo it.
 
    If a contributor already has a hand-issued key from an admin (break-glass /
    dev convenience), skip the ceremony: save that key to the store under its
-   org (ask them for the value privately — never in chat, never echoed), then
-   register as usual. Either path ends the same way: the token lives only in
-   the store (and, in global mode, the env var), and never transits chat.
+   workspace id (ask them for the value privately — never in chat, never
+   echoed), then register as usual. Either path ends the same way: the token
+   lives only in the store (and, in global mode, the env var), and never
+   transits chat.
 5. Finish by telling the contributor to reload — newly registered MCP servers
    never hot-load. The reload depends on the host:
    - **Claude Code CLI / agy CLI:** start a new session.
    - **agy desktop / Claude Cowork (desktop apps):** fully quit and reopen the
      app (a new chat/tab is not enough — the whole app must restart to re-read
      the config).
-   Then call `whoami` to verify — the org name/limits echoing back means you're
-   connected. Then run the **session-start org confirmation** before any write.
+   Then call `whoami` to verify — the workspace name/limits echoing back means
+   you're connected. Then run the **session-start workspace confirmation**
+   before any write.
 
 **Reconnecting after expiry:** any tool call that comes back as an auth
 failure (a bare 401, or a tool result carrying an auth-shaped error) after a
@@ -407,7 +410,7 @@ prior successful connect most likely means the 7-day bearer expired. Don't
 guess or retry blindly — tell the contributor their session credential has
 expired and offer to re-run the ceremony (a fresh email round trip, ~30
 seconds) to mint a new one; the new token overwrites the expired entry in the
-token store under that org, and re-registers per the mode they're using.
+token store under that workspace, and re-registers per the mode they're using.
 
 **init** — Create the worktree directory and write `README-worktree.md`: a short
 notice that this repo has no remote (see Vocabulary above — push happens through
@@ -519,8 +522,8 @@ repair, never a silent auto-repush).
    path-based match can stamp the wrong file's id and silently cross-write it
    on the next push.
 4. Stamp results back: on `accepted`, write `record_id` into that record's
-   `stable_id` and this session's `whoami.identity_uuid` into `owner_uuid`
-   (front-matter's `owner_uuid` and `whoami`'s `identity_uuid` are the same
+   `stable_id` and this session's `whoami.user_uid` into `owner_uuid`
+   (front-matter's `owner_uuid` and `whoami`'s `user_uid` are the same
    fact — see `resources/record-format.md`). `noop` already carries its
    existing `stable_id`, nothing to stamp. `rejected` carries neither.
 5. Handle every verdict per the `resources/floor-rules.md` table: repair

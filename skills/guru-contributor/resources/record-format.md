@@ -22,10 +22,10 @@ Five fields, no more — the server rejects (`schema_error`) any key outside thi
   authenticated caller at push time. Before a push, you never *invent* one by hand — it's
   simply absent on a record you haven't pushed yet. After an accepted push, the push
   workflow has you stamp it into the front-matter yourself, from that session's
-  `whoami.identity_uuid` (see the push workflow in `SKILL.md`) — that's not inventing a
+  `whoami.user_uid` (see the push workflow in `SKILL.md`) — that's not inventing a
   value, it's copying back the value the server just told you it used. `owner_uuid` in
-  front-matter and `whoami`'s `identity_uuid` are a different label for the same fact, not
-  two different concepts: the pushing identity's `identity_uuid`, carried into the record
+  front-matter and `whoami`'s `user_uid` are a different label for the same fact, not
+  two different concepts: the pushing identity's `user_uid`, carried into the record
   as its owner.
 - **`source_type`** — present only on a document-derived record: the raw origin kind
   (e.g. `pdf`, `git`). Absent on a hand-authored record — there is no origin to record.
