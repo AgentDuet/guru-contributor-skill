@@ -211,15 +211,17 @@ session start hands you off to when the libra tools aren't reachable, and it's
 also the answer whenever the contributor asks to connect or switch
 environments.
 
-1. Read `resources/environments.md` and pick the row by **env**:
-   - Ask the contributor which environment — **`exp` or `prod`** (default
-     `prod`) — unless they already said. That row gives BOTH the MCP endpoint
-     URL and the **routing org-uuid** (`<routing_org>`) for this connect.
-   - Exactly ONE concrete (non-placeholder) row listed → use it, just tell the
-     contributor which env/endpoint you're connecting to as you proceed.
-   - Empty, all placeholders, or the contributor's environment isn't listed →
-     ask them for the URL **and the routing org-uuid** directly. Never guess or
-     invent either. The routing org-uuid is NOT the ba_uid.
+1. Read `resources/environments.md` and pick the row — each gives BOTH the MCP
+   endpoint URL and the **routing org-uuid** (`<routing_org>`) for connect:
+   - **Default is `prod`** — the normal case. If the contributor didn't name an
+     environment, use the `prod` row without asking; just tell them you're
+     connecting to prod as you proceed.
+   - Exactly ONE concrete (non-placeholder) row listed → use it.
+   - Contributor explicitly names a non-listed environment (e.g. an internal
+     `exp`) → ask them for that env's URL **and routing org-uuid** directly, and
+     use those. Never guess or invent either. The routing org-uuid is NOT the
+     ba_uid.
+   - Empty or all placeholders → ask for the URL and routing org-uuid directly.
 2. Check for an existing `libra` registration. If one exists, show its current
    URL and offer keep or switch; switch means rewriting that entry with the
    new URL, nothing more.

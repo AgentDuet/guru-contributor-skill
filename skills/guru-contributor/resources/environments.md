@@ -2,18 +2,17 @@
 
 | env | MCP endpoint URL | routing org-uuid |
 |---|---|---|
-| exp | `https://api-eks.b3networks.com/library/private/v1/mcp` | `f17b4dd0-1d78-49c7-8e31-ca4b0ad1f9b9` |
 | prod | `https://api-eks.b3networks.com/library/private/v1/mcp` | `fc312420-0047-49a7-94a8-003f11f115c0` |
 
-`api-eks.b3networks.com` is the public gateway; the `/library` path prefix tells
-it which service to forward to (required on every call). Both `exp` and `prod`
-use the SAME host — the **routing org-uuid** in the `x-user-org-uuid` header is
-what selects the environment. The credential-issuance calls live on the same
-host + prefix: `.../library/public/v1/auth/request` and `.../exchange`.
+`prod` is the default and the only listed environment — **if the contributor
+doesn't name one, use it without asking.** `api-eks.b3networks.com` is the public
+gateway; the `/library` path prefix tells it which service to forward to
+(required on every call). The credential-issuance calls live on the same host +
+prefix: `.../library/public/v1/auth/request` and `.../exchange`.
 
-**Pick a row by `env`.** **connect** asks the contributor which environment —
-`exp` or `prod` (default `prod`) — and uses that row's endpoint URL and routing
-org-uuid.
+Other environments (e.g. an internal `exp`) are not listed here. To reach one, a
+contributor who knows it supplies that env's endpoint URL **and routing
+org-uuid** at connect — don't guess or invent either.
 
 Endpoint URLs and routing org-uuids are not secrets — fine to show, share, or
 write into config. Two things get set at connect and referenced from MCP config:
