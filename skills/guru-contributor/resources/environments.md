@@ -1,23 +1,30 @@
 # Environments
 
-| env | MCP endpoint URL |
-|---|---|
-| prod | `https://api-eks.b3networks.com/library/private/v1/mcp` |
+| env | MCP endpoint URL | routing org-uuid |
+|---|---|---|
+| exp | `https://api-eks.b3networks.com/library/private/v1/mcp` | `f17b4dd0-1d78-49c7-8e31-ca4b0ad1f9b9` |
+| prod | `https://api-eks.b3networks.com/library/private/v1/mcp` | `fc312420-0047-49a7-94a8-003f11f115c0` |
 
-`prod` is the public gateway. The `/library` path prefix tells the gateway
-which service to forward to — it is required on every call. The
-credential-issuance calls live on the same host, same prefix —
-`https://api-eks.b3networks.com/library/public/v1/auth/request` and `.../exchange`.
-Every request (issuance and MCP alike) must carry the `x-user-org-uuid` header
-so the gateway routes to the correct environment. If the contributor's
-environment isn't in this table, **connect** asks for the URL directly — never
-guess one.
+`api-eks.b3networks.com` is the public gateway; the `/library` path prefix tells
+it which service to forward to (required on every call). Both `exp` and `prod`
+use the SAME host — the **routing org-uuid** in the `x-user-org-uuid` header is
+what selects the environment. The credential-issuance calls live on the same
+host + prefix: `.../library/public/v1/auth/request` and `.../exchange`.
 
-Endpoint URLs are not secrets — a URL is fine to show, share, or write into
-config. The credential is: it exists only as the `LIBRA_CONTRIB_KEY`
-environment variable on the contributor's own machine (set in their shell
-profile or a secret manager), referenced from MCP config as
-`${LIBRA_CONTRIB_KEY}`, and resolved by the agent at connect time — it is
-never typed, pasted, or echoed anywhere else. The routing header reads a
-second variable, `LIBRA_BA_UID` (the contributor's workspace id `ba_uid` — not a secret);
-**connect** sets both, so the contributor manages neither by hand.
+**Pick a row by `env`.** **connect** asks the contributor which environment —
+`exp` or `prod` (default `prod`) — and uses that row's endpoint URL and routing
+org-uuid.
+
+Endpoint URLs and routing org-uuids are not secrets — fine to show, share, or
+write into config. Two things get set at connect and referenced from MCP config:
+
+- `LIBRA_CONTRIB_KEY` — the issued bearer token (the ONLY secret), referenced as
+  `${LIBRA_CONTRIB_KEY}`, resolved at connect time, never typed/pasted/echoed.
+  Expires after 7 days; reconnect rather than hand-edit it.
+- `LIBRA_ROUTING_ORG` — the routing org-uuid for the chosen env (the column
+  above), sent as `x-user-org-uuid` on every call so the gateway routes to the
+  right environment. This is a routing value, **NOT** the `ba_uid`: a tenant id
+  is not a routable org and fails at the gateway. Contributor identity is the
+  bearer token; the `ba_uid` travels only in the `/public/v1/auth/request` body.
+
+**connect** sets both variables, so the contributor manages neither by hand.

@@ -74,16 +74,18 @@ quotes, f-strings, escapes) and wastes turns. The scripts take their inputs from
   (macOS/Linux), `scripts/convert.ps1 <file>` (Windows).
 - **`scripts/creds.py {get|show|set|list} <ba_uid>`** — the token store
   (`~/.guru/credentials.json`). `get` prints a live token (exit 1 if
-  absent/expired); `set` reads `{token,expires_at,display_name,owner_name}` JSON from
+  absent/expired); `set` reads `{token,expires_at,display_name,owner_name,routing_org}` JSON from
   **stdin** (never a CLI arg).
 - **`scripts/auth.py {request|exchange|headers}`** — the OTP ceremony + header
-  injection. `request <email> <ba_uid> <env-url>` sends the code;
-  `exchange <email> <otp> <ba_uid> <env-url>` swaps the code for a bearer and
-  writes it **straight to the token store** (stdout is a redacted receipt — the
-  token never enters your context); `headers <ba_uid>` prints the exact
-  `{"Authorization", "x-user-org-uuid"}` pair for MCP config injection. The
-  script owns auth-URL derivation, routing headers, and the store write — never
-  hand-build any of those.
+  injection. `request <email> <ba_uid> <routing_org> <env-url>` sends the code;
+  `exchange <email> <otp> <ba_uid> <routing_org> <env-url>` swaps the code for a
+  bearer and writes it **straight to the token store** (stdout is a redacted
+  receipt — the token never enters your context); `headers <ba_uid>` prints the
+  exact `{"Authorization", "x-user-org-uuid"}` pair for MCP config injection. The
+  `<routing_org>` is the chosen env's **routing org-uuid** (the `routing org-uuid`
+  column in `resources/environments.md`) — NOT the ba_uid; it becomes the
+  `x-user-org-uuid` routing header. The script owns auth-URL derivation, routing
+  headers, and the store write — never hand-build any of those.
 - **`scripts/mcp.py {tools|call}`** — the MCP client for hosts WITHOUT a working
   native MCP harness. `tools <ba_uid> <env-url>` lists the server's tools with
   schemas; `call <tool> <ba_uid> <env-url>` invokes one, arguments as a JSON
@@ -209,13 +211,15 @@ session start hands you off to when the libra tools aren't reachable, and it's
 also the answer whenever the contributor asks to connect or switch
 environments.
 
-1. Read `resources/environments.md` and pick the endpoint:
-   - Exactly ONE concrete (non-placeholder) environment listed → **use it, no
-     confirmation** — just tell the contributor which endpoint you're connecting
-     to as you proceed.
-   - Several listed → ask which one.
+1. Read `resources/environments.md` and pick the row by **env**:
+   - Ask the contributor which environment — **`exp` or `prod`** (default
+     `prod`) — unless they already said. That row gives BOTH the MCP endpoint
+     URL and the **routing org-uuid** (`<routing_org>`) for this connect.
+   - Exactly ONE concrete (non-placeholder) row listed → use it, just tell the
+     contributor which env/endpoint you're connecting to as you proceed.
    - Empty, all placeholders, or the contributor's environment isn't listed →
-     ask them for the URL directly. Never guess or invent one.
+     ask them for the URL **and the routing org-uuid** directly. Never guess or
+     invent either. The routing org-uuid is NOT the ba_uid.
 2. Check for an existing `libra` registration. If one exists, show its current
    URL and offer keep or switch; switch means rewriting that entry with the
    new URL, nothing more.
@@ -223,7 +227,9 @@ environments.
    — so the contributor logs in once *per workspace*, not once per folder:
    Use the bundled **`scripts/creds.py`** for all store access — never hand-edit
    the JSON or compose inline python. The store is `~/.guru/credentials.json`
-   (`ba_uid -> { token, expires_at, display_name, owner_name }`, `chmod 600`).
+   (`ba_uid -> { token, expires_at, display_name, owner_name, routing_org }`,
+   `chmod 600`). `routing_org` is recorded at exchange so later MCP calls reuse
+   the same routing header.
    - Look up the target workspace: `python3 scripts/creds.py get <ba_uid>`.
      Exit 0 prints a live token → **reuse it**, no ceremony, no re-login (this
      is what makes the same workspace work across folders and lets you switch
@@ -259,11 +265,12 @@ environments.
      ```json
      { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
        "headers": { "Authorization": "Bearer ${LIBRA_CONTRIB_KEY}",
-                    "x-user-org-uuid": "${LIBRA_BA_UID}" } } } }
+                    "x-user-org-uuid": "${LIBRA_ROUTING_ORG}" } } } }
      ```
-     Set `LIBRA_CONTRIB_KEY` (the store's token) and `LIBRA_BA_UID` (the
-     workspace id) in the contributor's shell profile / secret manager. One
-     active workspace per machine; works in every folder.
+     Set `LIBRA_CONTRIB_KEY` (the store's token) and `LIBRA_ROUTING_ORG` (the
+     chosen env's **routing org-uuid**, NOT the ba_uid) in the contributor's
+     shell profile / secret manager. One active workspace per machine; works in
+     every folder.
    - *Per-folder* (for testing several workspaces/envs at once): a
      **project-scoped** `.mcp.json` in THIS folder with the workspace id and
      token **inline as literals** from the store, so each folder pins its own
@@ -271,7 +278,7 @@ environments.
      ```json
      { "mcpServers": { "libra": { "type": "http", "url": "<env-url>",
        "headers": { "Authorization": "Bearer <token literal>",
-                    "x-user-org-uuid": "<ba_uid literal>" } } } }
+                    "x-user-org-uuid": "<routing_org literal>" } } } }
      ```
      The token is a secret in a project file — **ensure `.mcp.json` is
      gitignored in that repo before writing it**, and tell the contributor it
@@ -288,7 +295,7 @@ environments.
    as literals (no runtime env expansion) — so exactly one workspace is active
    per machine; you *switch* it, you don't scope it per folder. Run:
    `agy mcp add -H "Authorization: Bearer <token literal>" -H
-   "x-user-org-uuid: <ba_uid literal>" libra <env-url>` (read both values
+   "x-user-org-uuid: <routing_org literal>" libra <env-url>` (read both values
    from `scripts/auth.py headers <ba_uid>` — one source for the pair), then `chmod 600 ~/.gemini/config/mcp_config.json` (it holds the
    token and agy leaves it world-readable). One command covers CLI + desktop.
    Tell the contributor agy is now globally pointed at THIS workspace until
@@ -303,7 +310,7 @@ environments.
    ```json
    { "mcpServers": { "libra": { "url": "<env-url>",
      "headers": { "Authorization": "Bearer <token literal>",
-                  "x-user-org-uuid": "<ba_uid literal>" } } } }
+                  "x-user-org-uuid": "<routing_org literal>" } } } }
    ```
    One active workspace per machine (like agy) — to switch workspace, rewrite
    this entry.
@@ -327,7 +334,7 @@ skip the ceremony):
       Never guess either, never pull them from git config, the environment
       registry, or any other ambient source — ask. (both are fine to hear back
       in chat — neither is a credential, unlike the bearer itself.)
-   2. Run `python3 scripts/auth.py request <email> <ba_uid>
+   2. Run `python3 scripts/auth.py request <email> <ba_uid> <routing_org>
       <env-url>` — pass the env's MCP URL verbatim; the script derives the
       auth base itself (preserving any gateway path prefix), sets the
       `x-user-org-uuid` routing header, and refuses a URL that doesn't end in
@@ -370,7 +377,7 @@ skip the ceremony):
         server and to try again shortly; if it repeats, that's one to escalate
         rather than keep retrying blindly.
    3. Once the contributor gives you the code, run `python3 scripts/auth.py
-      exchange <email> <otp> <ba_uid> <env-url>` (same env-url as step 2).
+      exchange <email> <otp> <ba_uid> <routing_org> <env-url>` (same env-url as step 2).
       Its shapes:
       - `{"status": "issued", …}` — the bearer was minted and written
         **straight to the token store by the script**; it never appears in
@@ -378,7 +385,7 @@ skip the ceremony):
         Continue to step 4 (register) — materialize the credential only at
         the moment you write the MCP config, via `scripts/auth.py headers
         <ba_uid>` (the exact header pair) or `creds.py get` (bare token);
-        global mode copies it into the `LIBRA_CONTRIB_KEY`/`LIBRA_BA_UID`
+        global mode copies it into the `LIBRA_CONTRIB_KEY`/`LIBRA_ROUTING_ORG`
         env vars.
       - `otp_invalid` — wrong code. Ask the contributor to retype it
         carefully (typos, transposed digits) and retry the exchange with the

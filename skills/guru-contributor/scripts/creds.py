@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Guru contributor credential store — read/write ~/.guru/credentials.json (stdlib only).
 
-The store maps ba_uid -> { token, expires_at, display_name, owner_name }. This
+The store maps ba_uid -> { token, expires_at, display_name, owner_name, routing_org }. This
 helper does the read/merge/write safely (chmod 600, never clobbers other
 workspaces) so connect doesn't hand-edit JSON.
 
 Commands:
     creds.py get  <ba_uid>     print the live token to stdout (exit 1 if absent/expired)
     creds.py show <ba_uid>     print the full entry as JSON minus the token (exit 1 if absent)
-    creds.py set  <ba_uid>     read {token,expires_at,display_name,owner_name} JSON from STDIN, merge
+    creds.py set  <ba_uid>     read {token,expires_at,display_name,owner_name,routing_org} JSON from STDIN, merge
     creds.py list                print workspaces + expiry (never tokens)
 
 The token is passed on STDIN for `set` (never as a CLI arg) so it can't leak into
@@ -88,7 +88,7 @@ def cmd_set(ba_uid: str) -> int:
         return 2
     data = _load()
     entry = data.get(ba_uid, {})
-    entry.update({k: incoming[k] for k in ("token", "expires_at", "display_name", "owner_name") if k in incoming})
+    entry.update({k: incoming[k] for k in ("token", "expires_at", "display_name", "owner_name", "routing_org") if k in incoming})
     data[ba_uid] = entry
     _save(data)
     print(f"stored credentials for workspace {ba_uid} (expires_at={entry.get('expires_at')})")

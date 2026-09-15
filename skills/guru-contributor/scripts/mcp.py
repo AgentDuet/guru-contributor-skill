@@ -49,9 +49,17 @@ def _auth_headers(ba_uid: str) -> dict:
             f"no live token for workspace {ba_uid} — run the connect ceremony "
             "(scripts/auth.py request + exchange) first"
         )
+    routing_org = entry.get("routing_org")
+    if not routing_org:
+        raise McpError(
+            f"stored credential for {ba_uid} has no routing_org — re-run connect "
+            "(exchange) to record it"
+        )
     return {
         "Authorization": f"Bearer {entry['token']}",
-        "x-user-org-uuid": ba_uid,
+        # ROUTING only — the env's routing org-uuid recorded at exchange, NOT the
+        # ba_uid (a tenant id is not a routable org and fails at the gateway).
+        "x-user-org-uuid": routing_org,
     }
 
 

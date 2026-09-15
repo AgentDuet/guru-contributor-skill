@@ -7,7 +7,7 @@ into the credential store (~/.guru/credentials.json, via creds.py) without ever
 passing through the agent's context.
 
 Commands:
-    auth.py request  <email> <ba_uid> <env_mcp_url>
+    auth.py request  <email> <ba_uid> <routing_org> <env_mcp_url>
         POST <auth-base>/request with body {"ba_uid": ..., "email": ...} (no
         portal domain — there is no domain input in this ceremony). Prints the
         server's JSON verdict verbatim, then a plain-language line for the
@@ -20,15 +20,16 @@ Commands:
             -> their own short message.
         Exit 0 on "sent", 1 on any other shape.
 
-    auth.py exchange <email> <otp> <ba_uid> <env_mcp_url>
+    auth.py exchange <email> <otp> <ba_uid> <routing_org> <env_mcp_url>
         POST <auth-base>/exchange. On success the bearer is written straight
-        to the store under <ba_uid>; stdout gets a REDACTED receipt only
-        ({"status": "issued", "display_name": ..., "expires_at": ...}) — the
-        token itself is never printed. Exit 0 issued, 1 otherwise.
+        to the store under <ba_uid> (together with <routing_org>, so later MCP
+        calls reuse the same routing header); stdout gets a REDACTED receipt
+        only ({"status": "issued", "display_name": ..., "expires_at": ...}) —
+        the token itself is never printed. Exit 0 issued, 1 otherwise.
 
     auth.py headers  <ba_uid>
         Print the MCP auth headers as JSON from the stored live token:
-        {"Authorization": "Bearer <token>", "x-user-org-uuid": "<ba_uid>"}.
+        {"Authorization": "Bearer <token>", "x-user-org-uuid": "<routing_org>"}.
         This is the ONE sanctioned way to materialize the credential for MCP
         config injection (same job as `creds.py get`, plus the routing
         header, so every consumer builds identical headers). Exit 1 if
@@ -39,9 +40,13 @@ The auth base is DERIVED from it — the trailing `/private/v1/mcp` is replaced
 with `/public/v1/auth` — which preserves any gateway path prefix. A URL that
 does not end in /private/v1/mcp is refused rather than guessed at.
 
-`x-user-org-uuid` here is the igw ROUTING header (b3 internal-gateway routing
-by workspace), not an identity claim — it carries the ba_uid so the request
-reaches the right backend. It stays on every request regardless of outcome.
+`x-user-org-uuid` is the gateway ROUTING header (b3 internal-gateway routing),
+NOT an identity claim. It must carry the environment's ROUTING org-uuid (the
+`routing org-uuid` column in resources/environments.md, chosen by env=exp|prod)
+— NOT the ba_uid. The ba_uid is a tenant id, not a routable org, so routing by
+it fails at the gateway. Contributor identity comes from the bearer token
+(the server resolves it); the ba_uid travels in the /request body, never the
+routing header.
 
 The OTP is fine as a CLI argument: it is single-use, 5-minute, and burns on
 exchange — worthless in shell history. The bearer is the secret, and it never
@@ -103,13 +108,14 @@ def _auth_base(env_mcp_url: str) -> str:
     return url[: -len(_MCP_TAIL)] + "/public/v1/auth"
 
 
-def _post(url: str, ba_uid: str, body: dict) -> dict:
+def _post(url: str, routing_org: str, body: dict) -> dict:
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "x-user-org-uuid": ba_uid,
+            # ROUTING only — the env's routing org-uuid, not the ba_uid.
+            "x-user-org-uuid": routing_org,
         },
         method="POST",
     )
@@ -127,28 +133,37 @@ def _post(url: str, ba_uid: str, body: dict) -> dict:
         return {"error": "bad_response", "detail": raw[:200].decode("utf-8", "replace")}
 
 
-def cmd_request(email: str, ba_uid: str, env_mcp_url: str) -> int:
-    result = _post(_auth_base(env_mcp_url) + "/request", ba_uid,
+def _outcome_code(result: dict) -> str | None:
+    """The machine code the skill branches on. Success is {"status": "sent"};
+    every other outcome is {"error": "<code>"} (spec §2.1). Read both."""
+    return result.get("status") or result.get("error")
+
+
+def cmd_request(email: str, ba_uid: str, routing_org: str, env_mcp_url: str) -> int:
+    result = _post(_auth_base(env_mcp_url) + "/request", routing_org,
                    {"ba_uid": ba_uid, "email": email})
     print(json.dumps(result, indent=2))
-    status = result.get("status")
-    message = _REQUEST_MESSAGES.get(status)
+    code = _outcome_code(result)
+    message = _REQUEST_MESSAGES.get(code)
     if message:
         print(message, file=sys.stderr)
-    return 0 if status in _PROCEED_TO_OTP else 1
+    return 0 if code in _PROCEED_TO_OTP else 1
 
 
-def cmd_exchange(email: str, otp: str, ba_uid: str, env_mcp_url: str) -> int:
-    result = _post(_auth_base(env_mcp_url) + "/exchange", ba_uid,
+def cmd_exchange(email: str, otp: str, ba_uid: str, routing_org: str, env_mcp_url: str) -> int:
+    result = _post(_auth_base(env_mcp_url) + "/exchange", routing_org,
                    {"email": email, "otp": otp})
     token = result.get("token")
     if not token:
         print(json.dumps(result, indent=2))
         return 1
     # Bearer goes straight to the store — never to stdout, never into context.
+    # Persist routing_org alongside it so `headers`/mcp.py reuse the SAME routing
+    # header on every MCP call (the ba_uid is not the routing value).
     data = creds._load()
     entry = data.get(ba_uid, {})
     entry.update({k: result[k] for k in ("token", "expires_at", "display_name", "owner_name") if k in result})
+    entry["routing_org"] = routing_org
     data[ba_uid] = entry
     creds._save(data)
     receipt = {
@@ -169,17 +184,22 @@ def cmd_headers(ba_uid: str) -> int:
         print(f"auth.py headers: no live token for workspace {ba_uid} — run the "
               "connect ceremony (request + exchange) first", file=sys.stderr)
         return 1
+    routing_org = entry.get("routing_org")
+    if not routing_org:
+        print(f"auth.py headers: stored credential for {ba_uid} has no routing_org "
+              "— re-run connect (exchange) to record it", file=sys.stderr)
+        return 1
     print(json.dumps({
         "Authorization": f"Bearer {entry['token']}",
-        "x-user-org-uuid": ba_uid,
+        "x-user-org-uuid": routing_org,
     }, indent=2))
     return 0
 
 
 def main(argv: list[str]) -> int:
     usage = {
-        "request": (3, "auth.py request <email> <ba_uid> <env_mcp_url>"),
-        "exchange": (4, "auth.py exchange <email> <otp> <ba_uid> <env_mcp_url>"),
+        "request": (4, "auth.py request <email> <ba_uid> <routing_org> <env_mcp_url>"),
+        "exchange": (5, "auth.py exchange <email> <otp> <ba_uid> <routing_org> <env_mcp_url>"),
         "headers": (1, "auth.py headers <ba_uid>"),
     }
     if len(argv) < 2 or argv[1] not in usage:
@@ -192,9 +212,9 @@ def main(argv: list[str]) -> int:
         return 2
     try:
         if cmd == "request":
-            return cmd_request(*argv[2:5])
+            return cmd_request(*argv[2:6])
         if cmd == "exchange":
-            return cmd_exchange(*argv[2:6])
+            return cmd_exchange(*argv[2:7])
         return cmd_headers(argv[2])
     except ValueError as e:
         print(f"auth.py {cmd}: {e}", file=sys.stderr)
