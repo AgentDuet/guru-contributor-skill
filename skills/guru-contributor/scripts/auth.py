@@ -74,7 +74,7 @@ _REQUEST_MESSAGES = {
     ),
     "first_contact_required": (
         "You haven't reached this workspace's librarian yet. Open a chat "
-        "with it on agentduet.com from your own account, then run connect again."
+        "with it on guru.dduet.com from your own account, then run connect again."
     ),
     "not_available": "This workspace isn't set up for contribution.",
     "otp_pending": (

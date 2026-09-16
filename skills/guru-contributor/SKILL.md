@@ -351,7 +351,7 @@ skip the ceremony):
       - `first_contact_required` — this workspace is provisioned, but this
         email has never chatted its librarian. Do **NOT** proceed to the OTP
         prompt. Tell the contributor exactly this: *"You haven't reached this
-        workspace's librarian yet. Open a chat with it on agentduet.com from
+        workspace's librarian yet. Open a chat with it on guru.dduet.com from
         your own account, then run connect again."* Stop here.
       - `not_available` — this workspace isn't set up for contribution at all
         (a generic code — provisioning state isn't enumerable further). Tell
