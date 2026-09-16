@@ -43,21 +43,25 @@ Copy `skills/guru-contributor/` into the agent's skills directory; run
 
 ## Get started
 
-Start a session and run **connect**. It asks you three things, once:
+Start a session and run **connect**. It asks you two things, once:
 
 1. your work email
-2. your organization's portal domain
-3. your organization
+2. the workspace you're contributing into (its id)
 
 connect emails you a 6-digit code, verifies you, and sets everything up. When
 your access later expires, just run **connect** again.
 
+**First time contributing to a workspace?** You need to have chatted that
+workspace's Guru librarian at least once, from your own account, at
+**guru.dduet.com** — that's how Guru recognises who you are. If you haven't yet,
+connect tells you exactly that: open a chat there, then run **connect** again.
+
 That's all you do. Connection, credentials, and security are handled for you —
 there's nothing to configure and nothing to keep secret on your side.
 
-Every session, before it writes anything, the skill shows you which
-organization you're contributing into and asks you to confirm — so a mistaken
-org is caught before anything lands.
+Every session, before it writes anything, the skill shows you which workspace
+you're contributing into and asks you to confirm — so a mistaken workspace is
+caught before anything lands.
 
 ## Your documents
 
