@@ -7,39 +7,26 @@ language, it takes care of the rest.
 
 ## Install
 
-Works on four hosts. Install once, then run **connect** (below) — it wires up
-the right config for whichever host you're on.
+Works on **Antigravity desktop (AG)** and the **`agy` CLI**. One install serves
+both — it lands globally in `~/.gemini/config/plugins/`. Install once, then run
+**connect** (below).
 
-### Claude Code (CLI)
+### Antigravity desktop (AG)
+No terminal needed. Paste this into an AG chat:
+
+> Install this skill: https://github.com/AgentDuet/guru-contributor-skill
+
+AG clones the repo and installs it for you. Approve the permission prompts; it
+may take a couple of attempts to get there — let it work through them. When it
+reports success: fully **quit + reopen** the app (plugins load at startup), run
+**connect**, then quit + reopen once more (MCP config also loads at startup).
+
+### agy CLI (AGY)
 ```
-/plugin marketplace add AgentDuet/guru-contributor-skill
-/plugin install guru-contributor@agentduet
+git clone https://github.com/AgentDuet/guru-contributor-skill.git
+agy plugin install ./guru-contributor-skill
 ```
-
-### Antigravity (agy) — CLI or 2.x desktop
-Download or clone the repo, then either:
-- **Just ask agy to install it** (easiest, no terminal typing): in an agy chat
-  say *"Install the guru-contributor skill from ./guru-contributor-skill"* —
-  agy runs the install for you (approve the permission prompt).
-- **Or run it yourself:**
-  ```
-  git clone https://github.com/AgentDuet/guru-contributor-skill.git
-  agy plugin install ./guru-contributor-skill
-  ```
-Either way it installs globally to `~/.gemini/config/plugins/`, shared by the
-`agy` CLI **and** the Antigravity desktop app. On the **desktop app**, fully
-quit + reopen after installing (it loads plugins at startup), then run
-**connect**, then restart once more (MCP config also loads at startup). The CLI
-just needs a new session.
-
-### Claude Cowork (Claude desktop app)
-In the app: **Customize → Skills → ➕ → Upload a skill**, and choose a ZIP of the
-`skills/guru-contributor/` folder. (Or drop it under `.claude/skills/`.) Then run
-**connect** and fully restart the app.
-
-### Other Agent-Skills agents
-Copy `skills/guru-contributor/` into the agent's skills directory; run
-**connect** and let it write that agent's MCP config.
+Open a new session, run **connect**, then open a new session again.
 
 ## Get started
 
